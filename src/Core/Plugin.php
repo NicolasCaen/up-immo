@@ -10,6 +10,13 @@ class Plugin extends Singleton {
     private $admin = null;
     private $adminAjax = null;
 
+    public static function getInstance(): self {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
     protected function __construct() {
         // Initialiser les composants admin
         if (is_admin()) {

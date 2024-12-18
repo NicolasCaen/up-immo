@@ -29,7 +29,6 @@ if (!defined('DEBUG_UP_IMMO')) {
 
 // Custom Autoloader
 function autoloader($class) {
-    // Vérifier si la classe appartient à notre namespace
     $prefix = 'UpImmo\\';
     $len = strlen($prefix);
     
@@ -37,20 +36,19 @@ function autoloader($class) {
         return;
     }
     
-    // Récupérer le chemin relatif de la classe
     $relative_class = substr($class, $len);
-    
-    // Convertir le namespace en chemin de fichier
     $file = UP_IMMO_PATH . 'src/' . str_replace('\\', '/', $relative_class) . '.php';
     
-    // Si le fichier existe, on l'inclut
     if (file_exists($file)) {
         require $file;
     }
 }
 
-// Enregistrer l'autoloader
 spl_autoload_register('UpImmo\autoloader');
 
 // Initialize plugin
-Core\Plugin::getInstance()->init(); 
+function init_plugin() {
+    Core\Plugin::getInstance()->init();
+}
+
+add_action('plugins_loaded', 'UpImmo\init_plugin'); 

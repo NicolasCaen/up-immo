@@ -50,14 +50,14 @@ class CSVImportStrategy implements ImportStrategyInterface {
 
     public function import(string $file_path): array {
         try {
-            $this->updateProgress('Début de l\'import...', 0);
+            $this->sendProgressUpdate('Début de l\'import...', 0);
             
             // Construire le chemin complet
             $full_path = WP_CONTENT_DIR . $file_path;
             
             // Si c'est un dossier, chercher le fichier ZIP
             if (is_dir($full_path)) {
-                $this->updateProgress('Recherche du fichier ZIP...', 5);
+                $this->sendProgressUpdate('Recherche du fichier ZIP...', 5);
                 if (DEBUG_UP_IMMO) {
                     error_log('UP_IMMO - Recherche de ZIP dans le dossier : ' . $full_path);
                 }
@@ -85,7 +85,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
                 }
             }
 
-            $this->updateProgress('Extraction du ZIP...', 10);
+            $this->sendProgressUpdate('Extraction du ZIP...', 10);
             // Si c'est un ZIP, extraire le CSV
             if (pathinfo($file_path, PATHINFO_EXTENSION) === 'zip') {
                 if (DEBUG_UP_IMMO) {
@@ -107,7 +107,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
                 throw new \Exception("Fichier CSV invalide ou introuvable : " . $full_path);
             }
 
-            $this->updateProgress('Lecture du fichier CSV...', 15);
+            $this->sendProgressUpdate('Lecture du fichier CSV...', 15);
             $handle = fopen($full_path, 'r');
             
             // Compter les lignes
@@ -118,7 +118,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
             rewind($handle);
 
             $current_line = 0;
-            $this->updateProgress('Début du traitement des biens...', 20);
+            $this->sendProgressUpdate('Début du traitement des biens...', 20);
 
             while (($line = fgets($handle)) !== false) {
                 $current_line++;
@@ -127,7 +127,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
                 try {
                     $data = $this->parseLine($line);
                     if ($data) {
-                        $this->updateProgress(
+                        $this->sendProgressUpdate(
                             sprintf('Import du bien %s (%d/%d)...', 
                                 $data[1] ?? '',
                                 $current_line, 
@@ -144,10 +144,10 @@ class CSVImportStrategy implements ImportStrategyInterface {
                 }
             }
 
-            $this->updateProgress('Finalisation de l\'import...', 90);
+            $this->sendProgressUpdate('Finalisation de l\'import...', 90);
             fclose($handle);
             
-            $this->updateProgress('Import terminé !', 100);
+            $this->sendProgressUpdate('Import terminé !', 100);
             
             return [
                 'success' => true,
@@ -157,7 +157,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
             ];
 
         } catch (\Exception $e) {
-            $this->updateProgress('Erreur : ' . $e->getMessage(), 100);
+            $this->handleError($e);
             return [
                 'success' => false,
                 'message' => $e->getMessage()
@@ -187,17 +187,17 @@ class CSVImportStrategy implements ImportStrategyInterface {
     }
 
     private function createOrUpdateBien(array $data): int {
-        // Nettoyer et encoder correctement les données
+        // Mapper les données
         $mapped_data = [
             'reference' => sanitize_text_field($data[1] ?? ''),
-            'titre' => sanitize_text_field(utf8_encode($data[19] ?? '')),
-            'description' => wp_kses_post(utf8_encode($data[20] ?? '')),
+            'titre' => sanitize_text_field(mb_convert_encoding($data[19] ?? '', 'UTF-8', 'ISO-8859-1')),
+            'description' => wp_kses_post(mb_convert_encoding($data[20] ?? '', 'UTF-8', 'ISO-8859-1')),
             'prix' => sanitize_text_field($data[10] ?? ''),
             'surface' => sanitize_text_field($data[15] ?? ''),
             'pieces' => sanitize_text_field($data[17] ?? ''),
             'chambres' => sanitize_text_field($data[18] ?? ''),
             'code_postal' => sanitize_text_field($data[4] ?? ''),
-            'ville' => sanitize_text_field($data[5] ?? ''),
+            'ville' => sanitize_text_field(mb_convert_encoding($data[5] ?? '', 'UTF-8', 'ISO-8859-1')),
             'dpe' => sanitize_text_field($data[176] ?? ''),
             'contact_tel' => sanitize_text_field($data[104] ?? ''),
             'contact_email' => sanitize_email($data[106] ?? '')
@@ -228,25 +228,57 @@ class CSVImportStrategy implements ImportStrategyInterface {
             $post_data['ID'] = $existing_posts[0]->ID;
         }
 
-        $post_id = wp_insert_post($post_data, true);
+        // Insérer ou mettre à jour le post
+        $post_id = wp_insert_post($post_data);
 
-        if (is_wp_error($post_id)) {
-            if (DEBUG_UP_IMMO) {
-                error_log('UP_IMMO - Erreur lors de la création du post : ' . $post_id->get_error_message());
-            }
-            throw new \Exception('Erreur lors de la création du bien : ' . $post_id->get_error_message());
-        }
-
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Post créé avec ID : ' . $post_id);
+        // Vérifier si l'insertion a réussi
+        if (!$post_id || is_wp_error($post_id)) {
+            $error_message = is_wp_error($post_id) ? $post_id->get_error_message() : 'Erreur inconnue';
+            throw new \Exception('Erreur lors de la création du bien : ' . $error_message);
         }
 
         // Mettre à jour les meta données
         foreach ($mapped_data as $key => $value) {
-            $result = update_post_meta($post_id, $key, $value);
-            if (DEBUG_UP_IMMO) {
-                error_log("UP_IMMO - Mise à jour meta '$key' : " . ($result ? 'succès' : 'échec'));
-            }
+            update_post_meta($post_id, $key, $value);
+        }
+
+        // Mise à jour des taxonomies
+        // Type de bien
+        $type_term = term_exists(mb_convert_encoding($data[3] ?? '', 'UTF-8', 'ISO-8859-1'), 'type_de_bien');
+        if (!$type_term) {
+            $type_term = wp_insert_term(
+                mb_convert_encoding($data[3] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'type_de_bien'
+            );
+        }
+        if (!is_wp_error($type_term)) {
+            wp_set_object_terms($post_id, (int)$type_term['term_id'], 'type_de_bien');
+        }
+
+        // Ville
+        $ville_term = term_exists(mb_convert_encoding($data[5] ?? '', 'UTF-8', 'ISO-8859-1'), 'ville');
+        if (!$ville_term) {
+            $ville_term = wp_insert_term(
+                mb_convert_encoding($data[5] ?? '', 'UTF-8', 'ISO-8859-1'),
+                'ville'
+            );
+        }
+        if (!is_wp_error($ville_term)) {
+            wp_set_object_terms($post_id, (int)$ville_term['term_id'], 'ville');
+        }
+
+        // Disponibilité (basé sur le champ 12)
+        $dispo = ($data[12] ?? '') === 'NON' ? 'Disponible' : 'Vendu';
+        $dispo_term = term_exists($dispo, 'disponibilite');
+        if (!$dispo_term) {
+            $dispo_term = wp_insert_term($dispo, 'disponibilite');
+        }
+        if (!is_wp_error($dispo_term)) {
+            wp_set_object_terms($post_id, (int)$dispo_term['term_id'], 'disponibilite');
+        }
+
+        if (DEBUG_UP_IMMO) {
+            error_log('UP_IMMO - Taxonomies mises à jour pour le bien ' . $post_id);
         }
 
         return $post_id;
@@ -357,5 +389,37 @@ class CSVImportStrategy implements ImportStrategyInterface {
         }
 
         return $mapped_data;
+    }
+
+    private function sendProgressUpdate($message, $percentage) {
+        $response = [
+            'message' => is_string($message) ? $message : json_encode($message),
+            'percentage' => $percentage
+        ];
+
+        if (DEBUG_UP_IMMO) {
+            error_log('UP_IMMO - Progress Update: ' . json_encode($response));
+        }
+
+        echo json_encode($response);
+        flush();
+        ob_flush();
+    }
+
+    private function handleError($error) {
+        $error_message = is_wp_error($error) ? $error->get_error_message() : 
+                       (is_object($error) ? json_encode($error) : (string)$error);
+        
+        $response = [
+            'success' => false,
+            'message' => "Erreur : " . $error_message
+        ];
+
+        if (DEBUG_UP_IMMO) {
+            error_log('UP_IMMO - Error: ' . json_encode($response));
+        }
+
+        echo json_encode($response);
+        die();
     }
 } 

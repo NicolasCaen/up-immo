@@ -129,7 +129,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
                     if ($data) {
                         $this->updateProgress(
                             sprintf('Import du bien %s (%d/%d)...', 
-                                $data['reference'], 
+                                $data[1] ?? '',
                                 $current_line, 
                                 $total_lines
                             ),
@@ -187,72 +187,65 @@ class CSVImportStrategy implements ImportStrategyInterface {
     }
 
     private function createOrUpdateBien(array $data): int {
-        // Déplacer le mapping au début de la fonction
+        // Nettoyer et encoder correctement les données
         $mapped_data = [
-            'reference' => $data[1] ?? '',
-            'titre' => $data[19] ?? '',
-            'description' => $data[20] ?? '',
-            'prix' => $data[10] ?? '',
-            'surface' => $data[15] ?? '',
-            'pieces' => $data[17] ?? '',
-            'chambres' => $data[18] ?? '',
-            'code_postal' => $data[4] ?? '',
-            'ville' => $data[5] ?? '',
-            'dpe' => $data[176] ?? '',
-            'contact_tel' => $data[104] ?? '',
-            'contact_email' => $data[106] ?? '',
+            'reference' => sanitize_text_field($data[1] ?? ''),
+            'titre' => sanitize_text_field(utf8_encode($data[19] ?? '')),
+            'description' => wp_kses_post(utf8_encode($data[20] ?? '')),
+            'prix' => sanitize_text_field($data[10] ?? ''),
+            'surface' => sanitize_text_field($data[15] ?? ''),
+            'pieces' => sanitize_text_field($data[17] ?? ''),
+            'chambres' => sanitize_text_field($data[18] ?? ''),
+            'code_postal' => sanitize_text_field($data[4] ?? ''),
+            'ville' => sanitize_text_field($data[5] ?? ''),
+            'dpe' => sanitize_text_field($data[176] ?? ''),
+            'contact_tel' => sanitize_text_field($data[104] ?? ''),
+            'contact_email' => sanitize_email($data[106] ?? '')
         ];
 
-        // Vérifier si le bien existe déjà
-        $existing_posts = get_posts([
-            'post_type' => 'bien',
-            'meta_key' => '_reference',
-            'meta_value' => $mapped_data['reference'],
-            'posts_per_page' => 1
-        ]);
+        if (DEBUG_UP_IMMO) {
+            error_log('UP_IMMO - Données mappées : ' . print_r($mapped_data, true));
+        }
 
         $post_data = [
             'post_type' => 'bien',
             'post_title' => $mapped_data['titre'],
             'post_content' => $mapped_data['description'],
-            'post_status' => 'publish'
+            'post_status' => 'publish',
+            'comment_status' => 'closed',
+            'ping_status' => 'closed'
         ];
 
-        $post_id = wp_insert_post($post_data);
+        // Vérifier si un bien avec cette référence existe déjà
+        $existing_posts = get_posts([
+            'post_type' => 'bien',
+            'meta_key' => 'reference',
+            'meta_value' => $mapped_data['reference'],
+            'posts_per_page' => 1
+        ]);
+
+        if (!empty($existing_posts)) {
+            $post_data['ID'] = $existing_posts[0]->ID;
+        }
+
+        $post_id = wp_insert_post($post_data, true);
 
         if (is_wp_error($post_id)) {
-            throw new \Exception($post_id->get_error_message());
+            if (DEBUG_UP_IMMO) {
+                error_log('UP_IMMO - Erreur lors de la création du post : ' . $post_id->get_error_message());
+            }
+            throw new \Exception('Erreur lors de la création du bien : ' . $post_id->get_error_message());
         }
 
-        // Mettre à jour les meta
+        if (DEBUG_UP_IMMO) {
+            error_log('UP_IMMO - Post créé avec ID : ' . $post_id);
+        }
+
+        // Mettre à jour les meta données
         foreach ($mapped_data as $key => $value) {
-            update_post_meta($post_id, '_' . $key, $value);
-        }
-
-        // Collecter les images
-        $images = [];
-        // Images principales (indices 84-92)
-        for ($i = 84; $i <= 92; $i++) {
-            if (!empty($data[$i])) {
-                $images[] = $data[$i];
-            }
-        }
-        // Images supplémentaires (indices 163-167)
-        for ($i = 163; $i <= 167; $i++) {
-            if (!empty($data[$i])) {
-                $images[] = $data[$i];
-            }
-        }
-
-        // Gérer les images
-        if (!empty($images)) {
-            foreach ($images as $image_url) {
-                if (!$this->imageExists($post_id, $image_url)) {
-                    $attachment_id = $this->importImage($post_id, $image_url);
-                    if ($attachment_id && !has_post_thumbnail($post_id)) {
-                        set_post_thumbnail($post_id, $attachment_id);
-                    }
-                }
+            $result = update_post_meta($post_id, $key, $value);
+            if (DEBUG_UP_IMMO) {
+                error_log("UP_IMMO - Mise à jour meta '$key' : " . ($result ? 'succès' : 'échec'));
             }
         }
 

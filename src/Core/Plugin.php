@@ -1,7 +1,26 @@
 <?php
 namespace UpImmo\Core;
 
+use UpImmo\Admin\AdminPage;
+use UpImmo\Admin\AdminAjax;
+use UpImmo\Import\ImportManager;
+
 class Plugin extends Singleton {
+    private static $instance = null;
+    private $admin = null;
+    private $adminAjax = null;
+
+    protected function __construct() {
+        // Initialiser les composants admin
+        if (is_admin()) {
+            $this->admin = new AdminPage();
+            $this->adminAjax = new AdminAjax();
+        }
+
+        // Initialiser le reste du plugin
+        $this->init();
+    }
+
     public function init(): void {
         // Initialize Post Types
         new \UpImmo\PostTypes\BienPostType();

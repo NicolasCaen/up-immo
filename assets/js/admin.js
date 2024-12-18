@@ -73,4 +73,36 @@
         UpImmoImport.init();
     });
 
+    function updateImportProgress() {
+        jQuery.ajax({
+            url: ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'up_immo_get_progress',
+                nonce: upImmoAdmin.nonce
+            },
+            success: function(response) {
+                if (response.success) {
+                    jQuery('#up-immo-progress-message').text(response.data.message);
+                    jQuery('#up-immo-progress-bar').css('width', response.data.percentage + '%');
+                    
+                    if (response.data.percentage < 100) {
+                        setTimeout(updateImportProgress, 500);
+                    }
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Erreur AJAX:', error);
+            }
+        });
+    }
+
+    // Démarrer le suivi de progression quand l'import commence
+    jQuery(document).ready(function($) {
+        $('#up-immo-import-form').on('submit', function() {
+            $('.up-immo-progress').show();
+            updateImportProgress();
+        });
+    });
+
 })(jQuery); 

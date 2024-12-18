@@ -16,7 +16,7 @@ class BienPostType {
             ],
             'public' => true,
             'has_archive' => true,
-            'supports' => ['title', 'editor', 'thumbnail'],
+            'supports' => ['title', 'editor', 'thumbnail', 'excerpt', 'custom-fields'],
             'menu_icon' => 'dashicons-building',
             'rewrite' => ['slug' => 'biens'],
         ]);

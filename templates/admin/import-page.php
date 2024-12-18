@@ -12,6 +12,13 @@ if (!defined('ABSPATH')) exit;
             <div class="progress-text"></div>
         </div>
 
+        <div class="up-immo-progress" style="display:none;">
+            <div id="up-immo-progress-message"></div>
+            <div class="progress-bar">
+                <div id="up-immo-progress-bar" style="width: 0%"></div>
+            </div>
+        </div>
+
         <form id="upImmoImportForm" class="up-immo-import-form">
             <?php wp_nonce_field('up_immo_import', 'up_immo_nonce'); ?>
             

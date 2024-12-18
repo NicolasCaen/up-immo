@@ -210,7 +210,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
         $post_data = [
             'post_type' => 'bien',
             'post_title' => $mapped_data['titre'],
-            'post_content' => $mapped_data['description'],
+            'post_excerpt' => $mapped_data['description'],
             'post_status' => 'publish',
             'comment_status' => 'closed',
             'ping_status' => 'closed'

@@ -5,14 +5,18 @@ use UpImmo\Core\Singleton;
 use UpImmo\Import\Strategies\CSVImportStrategy;
 
 class ImportManager extends Singleton {
-    private $context;
+    private const OPTION_NAME = 'up_immo_import_path';
+    private $importContext;
 
-    protected function __construct() {
-        parent::__construct();
-        $this->context = new ImportContext();
-        add_action('admin_menu', [$this, 'addImportPage']);
+    public function __construct() {
+        $this->importContext = new ImportContext();
         add_action('wp_ajax_up_immo_import', [$this, 'handleImport']);
-        add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
+        add_action('admin_init', [$this, 'registerSettings']);
+        add_action('admin_menu', [$this, 'addImportPage']);
+    }
+
+    public function registerSettings(): void {
+        register_setting('up_immo_options', self::OPTION_NAME);
     }
 
     public function addImportPage(): void {
@@ -31,43 +35,32 @@ class ImportManager extends Singleton {
     }
 
     public function handleImport(): void {
-        check_ajax_referer('up_immo_import', 'security');
-
         try {
-            $file_path = $_POST['file_path'] ?? '';
-            
-            $this->context->setStrategy(new CSVImportStrategy());
-            $results = $this->context->import($file_path);
+            check_ajax_referer('up_immo_import', 'nonce');
 
-            wp_send_json_success([
-                'message' => sprintf(__('%d biens importés avec succès', 'up-immo'), count($results)),
-                'progress' => $this->context->getProgress()
-            ]);
+            $file_path = sanitize_text_field($_POST['file_path'] ?? '');
+            
+            if (!empty($file_path)) {
+                // Sauvegarder le chemin dans les options
+                update_option(self::OPTION_NAME, $file_path);
+            } else {
+                // Utiliser le chemin sauvegardé
+                $file_path = get_option(self::OPTION_NAME, '');
+            }
+
+            if (empty($file_path)) {
+                throw new \Exception('Aucun chemin de fichier spécifié');
+            }
+
+            $results = $this->importContext->import($file_path);
+            wp_send_json_success($results);
+
         } catch (\Exception $e) {
-            wp_send_json_error([
-                'message' => $e->getMessage()
-            ]);
+            wp_send_json_error(['message' => $e->getMessage()]);
         }
     }
 
-    public function enqueueAssets($hook): void {
-        if ($hook !== 'bien_page_up-immo-import') {
-            return;
-        }
-
-        wp_enqueue_style(
-            'up-immo-admin',
-            UP_IMMO_URL . 'assets/css/admin.css',
-            [],
-            '1.0.0'
-        );
-
-        wp_enqueue_script(
-            'up-immo-admin',
-            UP_IMMO_URL . 'assets/js/admin.js',
-            ['jquery'],
-            '1.0.0',
-            true
-        );
+    public function getLastImportPath(): string {
+        return get_option(self::OPTION_NAME, '');
     }
 } 

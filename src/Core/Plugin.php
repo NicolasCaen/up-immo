@@ -21,6 +21,7 @@ class Plugin extends Singleton {
         // Initialiser les composants admin
         if (is_admin()) {
             $this->admin = new AdminPage();
+            add_action('admin_enqueue_scripts', [$this->admin, 'enqueueScripts']);
             $this->adminAjax = new AdminAjax();
         }
 

@@ -18,6 +18,7 @@ define('UP_IMMO_PLUGIN_FILE', __FILE__);
 define('UP_IMMO_PATH', plugin_dir_path(__FILE__));
 define('UP_IMMO_URL', plugin_dir_url(__FILE__));
 define('DEBUG_UP_IMMO', true); // Constante de debug
+define('UP_IMMO_PLUGIN_DIR', plugin_dir_path(__FILE__));
 
 // Définition des constantes manquantes
 if (!defined('UP_IMMO_PLUGIN_FILE')) {

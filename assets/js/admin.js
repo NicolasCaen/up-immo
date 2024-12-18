@@ -1,31 +1,67 @@
+alert('ok');
 (function($) {
     'use strict';
 
     const UpImmoImport = {
         init: function() {
+            console.log('Initialisation...');
             this.form = $('#upImmoImportForm');
+            console.log('Formulaire trouvé:', this.form.length > 0);
+            
+            if (!this.form.length) return;
+
             this.progress = $('.up-immo-import-progress');
             this.progressBar = $('.progress-bar__fill');
             this.progressText = $('.progress-text');
-
+            this.submitButton = this.form.find('button[type="submit"]');
+            
+            console.log('Éléments trouvés:', {
+                progress: this.progress.length > 0,
+                progressBar: this.progressBar.length > 0,
+                progressText: this.progressText.length > 0,
+                submitButton: this.submitButton.length > 0
+            });
+            
             this.bindEvents();
         },
 
         bindEvents: function() {
-            this.form.on('submit', this.handleSubmit.bind(this));
+            console.log('Binding des événements...');
+            this.form.on('submit', (e) => {
+                console.log('Formulaire soumis');
+                this.handleSubmit(e);
+            });
         },
 
         handleSubmit: function(e) {
             e.preventDefault();
+            console.log('Gestion de la soumission...');
+
+            const filePath = this.form.find('#file_path').val();
+            const strategy = this.form.find('#import_strategy').val();
+            
+            console.log('Valeurs du formulaire:', {
+                filePath: filePath,
+                strategy: strategy
+            });
+
+            if (!filePath || !strategy) {
+                alert('Veuillez remplir tous les champs');
+                return;
+            }
 
             const formData = new FormData(this.form[0]);
             formData.append('action', 'up_immo_import');
-            formData.append('security', $('#up_immo_nonce').val());
+            
+            console.log('FormData créé');
 
-            this.form.find('button').prop('disabled', true);
+            this.submitButton.prop('disabled', true);
             this.progress.show();
+            this.progressBar.css('width', '0%');
+            this.progressText.text('Démarrage de l\'import...');
 
             this.startImport(formData);
+            this.startProgressTracking();
         },
 
         startImport: function(formData) {
@@ -40,28 +76,48 @@
             });
         },
 
-        handleSuccess: function(response) {
-            if (response.success) {
-                const progress = response.data.progress;
-                this.updateProgress(progress.percentage);
-                this.progressText.text(response.data.message);
+        startProgressTracking: function() {
+            this.checkProgress();
+        },
 
-                if (progress.percentage < 100) {
-                    // Continue import if not finished
-                    setTimeout(() => {
-                        this.startImport(new FormData(this.form[0]));
-                    }, 1000);
-                } else {
-                    this.form.find('button').prop('disabled', false);
-                }
-            } else {
-                this.handleError(response.data.message);
+        checkProgress: function() {
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'up_immo_get_progress',
+                    nonce: $('#upImmoImportForm [name="nonce"]').val()
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.updateProgress(response.data.percentage);
+                        this.progressText.text(response.data.message);
+                        
+                        if (response.data.percentage < 100) {
+                            setTimeout(() => this.checkProgress(), 500);
+                        } else {
+                            this.submitButton.prop('disabled', false);
+                            // Optionnel : message de succès
+                            setTimeout(() => {
+                                alert('Import terminé avec succès !');
+                            }, 500);
+                        }
+                    }
+                },
+                error: this.handleError.bind(this)
+            });
+        },
+
+        handleSuccess: function(response) {
+            if (!response.success) {
+                this.handleError(response.data.message || 'Une erreur est survenue');
             }
         },
 
         handleError: function(error) {
-            this.progressText.html(`<span class="error">${error}</span>`);
-            this.form.find('button').prop('disabled', false);
+            console.error('Erreur:', error);
+            this.progressText.html(`<span style="color: red;">Erreur : ${error}</span>`);
+            this.submitButton.prop('disabled', false);
         },
 
         updateProgress: function(percentage) {
@@ -69,40 +125,10 @@
         }
     };
 
-    $(document).ready(function() {
+    // S'assurer que le document est prêt
+    $(function() {
+        console.log('Document prêt, initialisation de UpImmoImport');
         UpImmoImport.init();
-    });
-
-    function updateImportProgress() {
-        jQuery.ajax({
-            url: ajaxurl,
-            type: 'POST',
-            data: {
-                action: 'up_immo_get_progress',
-                nonce: upImmoAdmin.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    jQuery('#up-immo-progress-message').text(response.data.message);
-                    jQuery('#up-immo-progress-bar').css('width', response.data.percentage + '%');
-                    
-                    if (response.data.percentage < 100) {
-                        setTimeout(updateImportProgress, 500);
-                    }
-                }
-            },
-            error: function(xhr, status, error) {
-                console.error('Erreur AJAX:', error);
-            }
-        });
-    }
-
-    // Démarrer le suivi de progression quand l'import commence
-    jQuery(document).ready(function($) {
-        $('#up-immo-import-form').on('submit', function() {
-            $('.up-immo-progress').show();
-            updateImportProgress();
-        });
     });
 
 })(jQuery); 

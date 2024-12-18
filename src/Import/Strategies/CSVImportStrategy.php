@@ -10,6 +10,16 @@ class CSVImportStrategy implements ImportStrategyInterface {
         'percentage' => 0
     ];
 
+    private $encoding = 'UTF-8';
+
+    public function setEncoding(string $encoding): void {
+        $this->encoding = $encoding;
+    }
+
+    protected function convertEncoding(string $str): string {
+        return mb_convert_encoding($str, 'UTF-8', $this->encoding);
+    }
+
     private function parseLine(string $line): array {
         if (DEBUG_UP_IMMO) {
             error_log('UP_IMMO - Parsing ligne : ' . $line);
@@ -281,11 +291,34 @@ class CSVImportStrategy implements ImportStrategyInterface {
             error_log('UP_IMMO - Taxonomies mises à jour pour le bien ' . $post_id);
         }
 
+        // Importer les images
+        $images = array_filter($data, function($value) {
+            return preg_match('/^https?:\/\/.*\.(jpg|jpeg|png|gif)$/i', $value);
+        });
+
+        if (!empty($images)) {
+            $this->sendProgressUpdate('Import des images...', null);
+            foreach ($images as $image_url) {
+                try {
+                    if (!$this->imageExists($post_id, $image_url)) {
+                        $attachment_id = $this->importImage($post_id, $image_url);
+                        if ($attachment_id) {
+                            // Définir l'image à la une si c'est la première image
+                            if (!has_post_thumbnail($post_id)) {
+                                set_post_thumbnail($post_id, $attachment_id);
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    error_log('UP_IMMO - Erreur import image : ' . $e->getMessage());
+                }
+            }
+        }
+
         return $post_id;
     }
 
-    private function imageExists($post_id, $image_url) {
-        // Vérifier dans les métadonnées des images attachées
+    private function imageExists($post_id, $image_url): bool {
         $args = array(
             'post_type' => 'attachment',
             'post_parent' => $post_id,
@@ -298,26 +331,18 @@ class CSVImportStrategy implements ImportStrategyInterface {
         return !empty($existing);
     }
 
-    private function importImage($post_id, $image_url) {
+    private function importImage($post_id, $image_url): int|false {
         try {
             if (empty($image_url)) {
                 return false;
             }
 
-            $this->updateProgress('Vérification de l\'image : ' . basename($image_url));
-
-            if ($this->imageExists($post_id, $image_url)) {
-                $this->updateProgress('Image déjà existante : ' . basename($image_url));
-                return false;
-            }
-
-            $this->updateProgress('Import de l\'image : ' . basename($image_url));
+            $this->sendProgressUpdate('Import de l\'image : ' . basename($image_url), null);
 
             // Télécharger l'image
             $tmp_file = download_url($image_url);
             if (is_wp_error($tmp_file)) {
-                error_log('UP_IMMO - Erreur téléchargement image : ' . $image_url . ' - ' . $tmp_file->get_error_message());
-                return false;
+                throw new \Exception('Erreur téléchargement : ' . $tmp_file->get_error_message());
             }
 
             // Préparer le fichier pour l'import
@@ -347,8 +372,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
 
             if (is_wp_error($attachment_id)) {
                 @unlink($tmp_file);
-                error_log('UP_IMMO - Erreur import image : ' . $image_url . ' - ' . $attachment_id->get_error_message());
-                return false;
+                throw new \Exception('Erreur import : ' . $attachment_id->get_error_message());
             }
 
             // Sauvegarder l'URL source pour éviter les doublons
@@ -357,7 +381,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
             return $attachment_id;
 
         } catch (\Exception $e) {
-            $this->updateProgress('Erreur import image : ' . $e->getMessage());
+            error_log('UP_IMMO - ' . $e->getMessage());
             return false;
         }
     }

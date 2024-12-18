@@ -12,8 +12,10 @@ class VilleTaxonomy {
                 'name' => __('Villes', 'up-immo'),
                 'singular_name' => __('Ville', 'up-immo'),
             ],
-            'hierarchical' => true,
+            'hierarchical' => false,
+            "multiple" => false,
             'show_admin_column' => true,
+            'show_in_rest' => true,
             'rewrite' => ['slug' => 'ville'],
         ]);
     }

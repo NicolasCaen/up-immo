@@ -12,8 +12,10 @@ class DisponibiliteTaxonomy {
                 'name' => __('Disponibilités', 'up-immo'),
                 'singular_name' => __('Disponibilité', 'up-immo'),
             ],
-            'hierarchical' => true,
+            'hierarchical' => false,
             'show_admin_column' => true,
+            'show_in_rest' => true,
+            "multiple" => false,
             'rewrite' => ['slug' => 'disponibilite'],
         ]);
     }

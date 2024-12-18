@@ -14,6 +14,9 @@ class EtatTaxonomy {
             ],
             'hierarchical' => true,
             'show_admin_column' => true,
+            'show_in_rest' => true,
+            "multiple" => false,
+            
             'rewrite' => ['slug' => 'etat'],
         ]);
     }

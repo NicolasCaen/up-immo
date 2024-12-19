@@ -170,6 +170,11 @@ class BienPostType {
                 'label' => __('Email:', 'up-immo'),
                 'type' => 'email',
             ],
+            'attached_images' => [
+                'label' => __('IDs des images:', 'up-immo'),
+                'type' => 'readonly',
+                'description' => __('IDs des images attachées à ce bien', 'up-immo'),
+            ],
         ];
 
         // Traiter tous les champs du mapping
@@ -200,6 +205,25 @@ class BienPostType {
 
         echo '<div class="bien-meta-box__container"><div class="bien-meta-box__items">';
         foreach ($fields as $key => $field) {
+            if ($key === 'attached_images') {
+                // Récupérer toutes les images attachées
+                $attachments = get_attached_media('image', $post->ID);
+                $image_ids = [];
+                foreach ($attachments as $attachment) {
+                    $image_ids[] = $attachment->ID;
+                }
+                $value = implode(', ', $image_ids);
+                
+                echo '<div class="bien-meta-box__item bien-meta-box__item--' . esc_attr($key) . '">';
+                echo '<label for="' . esc_attr($key) . '">' . esc_html($field['label']) . '</label>';
+                echo '<input type="text" id="' . esc_attr($key) . '" value="' . esc_attr($value) . '" readonly>';
+                if (!empty($field['description'])) {
+                    echo '<p class="description">' . esc_html($field['description']) . '</p>';
+                }
+                echo '</div>';
+                continue;
+            }
+
             $value = get_post_meta($post->ID, $key, true);
             
             echo '<div class="bien-meta-box__item bien-meta-box__item--' . esc_attr($key) . '">';

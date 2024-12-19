@@ -2,26 +2,20 @@
 namespace UpImmo\Helpers;
 
 class ZipHelper {
-    public static function extractCsvFromZip(string $zip_path): ?string {
+    public static function extractCsvFromZip(string $path): ?string {
         if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Début extraction ZIP : ' . $zip_path);
+            error_log('UP_IMMO - Début extraction ZIP depuis : ' . $path);
         }
 
-        $full_zip_path = WP_CONTENT_DIR . $zip_path;
-        
-        if (!file_exists($full_zip_path)) {
-            if (DEBUG_UP_IMMO) {
-                error_log('UP_IMMO - Fichier ZIP non trouvé : ' . $full_zip_path);
-            }
-            throw new \Exception("Fichier ZIP non trouvé : " . $full_zip_path);
+        // Chercher le ZIP dans le dossier
+        $zipFiles = glob($path . '/*.zip');
+        if (empty($zipFiles)) {
+            throw new \Exception('Aucun fichier ZIP trouvé dans : ' . $path);
         }
 
         $zip = new \ZipArchive();
-        if ($zip->open($full_zip_path) !== true) {
-            if (DEBUG_UP_IMMO) {
-                error_log('UP_IMMO - Impossible d\'ouvrir le ZIP : ' . $full_zip_path);
-            }
-            throw new \Exception("Impossible d'ouvrir le ZIP");
+        if ($zip->open($zipFiles[0]) !== true) {
+            throw new \Exception("Impossible d'ouvrir le ZIP : " . $zipFiles[0]);
         }
 
         // Créer un dossier temporaire
@@ -31,33 +25,18 @@ class ZipHelper {
         }
 
         // Extraire et chercher le fichier CSV
-        $csv_path = null;
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $filename = $zip->getNameIndex($i);
-            if (DEBUG_UP_IMMO) {
-                error_log('UP_IMMO - Fichier trouvé dans ZIP : ' . $filename);
-            }
             if (pathinfo($filename, PATHINFO_EXTENSION) === 'csv') {
                 $zip->extractTo($temp_dir, $filename);
-                $csv_path = $temp_dir . $filename;
-                break;
+                $csvPath = $temp_dir . $filename;
+                $zip->close();
+                return str_replace(WP_CONTENT_DIR, '', $csvPath);
             }
         }
 
         $zip->close();
-
-        if ($csv_path === null) {
-            if (DEBUG_UP_IMMO) {
-                error_log('UP_IMMO - Aucun fichier CSV trouvé dans le ZIP');
-            }
-            throw new \Exception("Aucun fichier CSV trouvé dans le ZIP");
-        }
-
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - CSV extrait avec succès : ' . $csv_path);
-        }
-
-        return str_replace(WP_CONTENT_DIR, '', $csv_path);
+        throw new \Exception('Aucun fichier CSV trouvé dans le ZIP');
     }
 
     public static function cleanupTemp(): void {

@@ -3,12 +3,15 @@ namespace UpImmo\Core;
 
 use UpImmo\Admin\AdminPage;
 use UpImmo\Admin\AdminAjax;
+use UpImmo\Admin\SettingsPage;
+use UpImmo\Admin\ImportPage;
 use UpImmo\Import\ImportManager;
 
 class Plugin extends Singleton {
     private static $instance = null;
     private $admin = null;
     private $adminAjax = null;
+    private $settings;
 
     public static function getInstance(): self {
         if (null === self::$instance) {
@@ -21,6 +24,8 @@ class Plugin extends Singleton {
         // Initialiser les composants admin
         if (is_admin()) {
             $this->admin = new AdminPage();
+            $this->settings = new \UpImmo\Admin\SettingsPage();
+            new \UpImmo\Admin\ImportPage();
             add_action('admin_enqueue_scripts', [$this->admin, 'enqueueScripts']);
             $this->adminAjax = new AdminAjax();
         }

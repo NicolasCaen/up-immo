@@ -32,46 +32,64 @@ class AdminAjax {
         try {
             check_ajax_referer('up_immo_admin', 'nonce');
 
-            $file_path = sanitize_text_field($_POST['file_path'] ?? '');
+            // Récupérer le chemin du fichier depuis les options
+            $file_path = get_option('up_immo_import_path', '');
             $strategy = sanitize_text_field($_POST['import_strategy'] ?? '');
-            
-            if (!empty($file_path)) {
-                update_option('up_immo_import_path', $file_path);
-            } else {
-                $file_path = get_option('up_immo_import_path', '');
-            }
 
             if (empty($file_path)) {
-                throw new \Exception('Aucun chemin de fichier spécifié');
+                throw new \Exception(__('Aucun chemin de fichier configuré dans les paramètres', 'up-immo'));
             }
 
             if (empty($strategy)) {
-                throw new \Exception('Aucune stratégie d\'import sélectionnée');
+                throw new \Exception(__('Aucune stratégie d\'import sélectionnée', 'up-immo'));
             }
 
+            // Log pour le debug
+            if (DEBUG_UP_IMMO) {
+                error_log('UP_IMMO - Début import avec stratégie: ' . $strategy);
+                error_log('UP_IMMO - Chemin du fichier: ' . $file_path);
+            }
+
+            // Initialiser le contexte d'import
             $importContext = new \UpImmo\Import\ImportContext();
             
-            // Ajouter l'encodage UTF-8 pour le traitement du CSV
-            setlocale(LC_ALL, 'fr_FR.UTF-8');
-            
-            // Sélectionner la stratégie appropriée
+            // Sélectionner la stratégie
             switch ($strategy) {
                 case 'csv':
                     $importStrategy = new \UpImmo\Import\Strategies\CSVImportStrategy();
-                    // Configurer l'encodage pour la stratégie CSV
                     $importStrategy->setEncoding('UTF-8');
                     $importContext->setStrategy($importStrategy);
                     break;
                 default:
-                    throw new \Exception('Stratégie d\'import non valide');
+                    throw new \Exception(__('Stratégie d\'import non valide', 'up-immo'));
             }
 
+            // Mettre à jour le statut initial
+            update_option('up_immo_import_progress', [
+                'message' => __('Démarrage de l\'import...', 'up-immo'),
+                'percentage' => 0,
+                'timestamp' => time()
+            ]);
+
+            // Lancer l'import
             $results = $importContext->import($file_path);
             
-            wp_send_json_success($results);
+            if (DEBUG_UP_IMMO) {
+                error_log('UP_IMMO - Résultats import: ' . print_r($results, true));
+            }
+
+            wp_send_json_success([
+                'message' => __('Import terminé avec succès', 'up-immo'),
+                'results' => $results
+            ]);
 
         } catch (\Exception $e) {
-            wp_send_json_error(['message' => $e->getMessage()]);
+            error_log('UP_IMMO - Erreur import: ' . $e->getMessage());
+            wp_send_json_error([
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ]);
         }
     }
 } 

@@ -2,262 +2,262 @@
 namespace UpImmo\Import\Strategies;
 
 use UpImmo\Import\Interfaces\ImportStrategyInterface;
+use UpImmo\Helpers\ZipHelper;
 
 class CSVImportStrategy implements ImportStrategyInterface {
-    private $progress = [
-        'total' => 0,
-        'current' => 0,
-        'percentage' => 0
-    ];
+    protected $context;
+    protected $progress = [];
+    protected $encoding = 'ISO-8859-1';
+    protected $zipHelper;
 
-    private $encoding = 'UTF-8';
+    public function __construct($context = null) {
+        $this->context = $context;
+        $this->zipHelper = new ZipHelper();
+    }
 
     public function setEncoding(string $encoding): void {
         $this->encoding = $encoding;
     }
 
-    protected function convertEncoding(string $str): string {
-        return mb_convert_encoding($str, 'UTF-8', $this->encoding);
-    }
-
-    private function parseLine(string $line): array {
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Parsing ligne : ' . $line);
-        }
-
-        // Diviser la ligne en utilisant le séparateur !#
-        $parts = explode('!#', $line);
+    public function readData(string $filePath): array {
+        error_log('UP_IMMO - Vérification du type de chemin : ' . $filePath);
         
-        // Nettoyer les guillemets
-        $parts = array_map(function($part) {
-            return trim($part, '"');
-        }, $parts);
-
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Données parsées : ' . print_r($parts, true));
+        // Construire le chemin complet si ne commence pas par /
+        if (strpos($filePath, '/') !== 0 || strpos($filePath, ':') === false) {
+            $fullPath = trailingslashit(WP_CONTENT_DIR) . ltrim($filePath, '/');
+            error_log('UP_IMMO - Chemin complet construit : ' . $fullPath);
+        } else {
+            $fullPath = $filePath;
         }
 
-        return $parts;
-    }
-
-    private function updateProgress($message, $percentage = null) {
-        $this->progress['message'] = $message;
-        if ($percentage !== null) {
-            $this->progress['percentage'] = $percentage;
+        // Vérifier si c'est un dossier contenant un ZIP
+        if (is_dir($fullPath)) {
+            error_log('UP_IMMO - Recherche dans le dossier : ' . $fullPath);
+            try {
+                $csvPath = $this->zipHelper->extractCsvFromZip($fullPath);
+                error_log('UP_IMMO - CSV extrait : ' . $csvPath);
+                return $this->readCSV(WP_CONTENT_DIR . $csvPath);
+            } catch (\Exception $e) {
+                error_log('UP_IMMO - Erreur extraction : ' . $e->getMessage());
+                throw $e;
+            }
         }
         
-        // Sauvegarder la progression dans une option temporaire
-        update_option('up_immo_import_progress', [
-            'message' => $message,
-            'percentage' => $this->progress['percentage'],
-            'timestamp' => time()
-        ], false);
-
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Progress: ' . $message . ' (' . $this->progress['percentage'] . '%)');
-        }
+        return $this->readCSV($fullPath);
     }
 
-    public function import(string $file_path): array {
+    public function importRow(array $row): array {
         try {
-            $this->sendProgressUpdate('Début de l\'import...', 0);
-            
-            // Construire le chemin complet
-            $full_path = WP_CONTENT_DIR . $file_path;
-            
-            // Si c'est un dossier, chercher le fichier ZIP
-            if (is_dir($full_path)) {
-                $this->sendProgressUpdate('Recherche du fichier ZIP...', 5);
-                if (DEBUG_UP_IMMO) {
-                    error_log('UP_IMMO - Recherche de ZIP dans le dossier : ' . $full_path);
-                }
-                
-                $files = scandir($full_path);
-                $zip_file = null;
-                
-                foreach ($files as $file) {
-                    if (pathinfo($file, PATHINFO_EXTENSION) === 'zip') {
-                        $zip_file = $file;
-                        if (DEBUG_UP_IMMO) {
-                            error_log('UP_IMMO - Fichier ZIP trouvé : ' . $zip_file);
-                        }
-                        break;
-                    }
-                }
-                
-                if ($zip_file) {
-                    $file_path = rtrim($file_path, '/') . '/' . $zip_file;
-                    if (DEBUG_UP_IMMO) {
-                        error_log('UP_IMMO - Chemin du ZIP : ' . $file_path);
-                    }
-                } else {
-                    throw new \Exception("Aucun fichier ZIP trouvé dans le dossier : " . $full_path);
-                }
-            }
-
-            $this->sendProgressUpdate('Extraction du ZIP...', 10);
-            // Si c'est un ZIP, extraire le CSV
-            if (pathinfo($file_path, PATHINFO_EXTENSION) === 'zip') {
-                if (DEBUG_UP_IMMO) {
-                    error_log('UP_IMMO - Fichier ZIP détecté, extraction...');
-                }
-                $file_path = \UpImmo\Helpers\ZipHelper::extractCsvFromZip($file_path);
-            }
-
-            $full_path = WP_CONTENT_DIR . $file_path;
-            
-            if (DEBUG_UP_IMMO) {
-                error_log('UP_IMMO - Chemin final du fichier : ' . $full_path);
-                error_log('UP_IMMO - Le fichier existe ? : ' . (file_exists($full_path) ? 'Oui' : 'Non'));
-            }
-
-            $results = [];
-
-            if (!$this->validate($full_path)) {
-                throw new \Exception("Fichier CSV invalide ou introuvable : " . $full_path);
-            }
-
-            $this->sendProgressUpdate('Lecture du fichier CSV...', 15);
-            $handle = fopen($full_path, 'r');
-            
-            // Compter les lignes
-            $total_lines = 0;
-            while (!feof($handle)) {
-                if (fgets($handle) !== false) $total_lines++;
-            }
-            rewind($handle);
-
-            $current_line = 0;
-            $this->sendProgressUpdate('Début du traitement des biens...', 20);
-
-            while (($line = fgets($handle)) !== false) {
-                $current_line++;
-                $progress = 20 + (60 * ($current_line / $total_lines));
-                
-                try {
-                    $data = $this->parseLine($line);
-                    if ($data) {
-                        $this->sendProgressUpdate(
-                            sprintf('Import du bien %s (%d/%d)...', 
-                                $data[1] ?? '',
-                                $current_line, 
-                                $total_lines
-                            ),
-                            $progress
-                        );
-                        
-                        $post_id = $this->createOrUpdateBien($data);
-                        $results[] = $post_id;
-                    }
-                } catch (\Exception $e) {
-                    error_log('UP_IMMO - Erreur ligne ' . $current_line . ': ' . $e->getMessage());
-                }
-            }
-
-            $this->sendProgressUpdate('Finalisation de l\'import...', 90);
-            fclose($handle);
-            
-            $this->sendProgressUpdate('Import terminé !', 100);
+            $mapped_data = $this->mapData($row);
+            $post_id = $this->createPost($mapped_data);
+            $this->updateTaxonomies($post_id, $row);
+            $this->importImages($post_id, $mapped_data['images']);
             
             return [
                 'success' => true,
-                'message' => 'Import terminé avec succès',
-                'imported' => $current_line,
-                'total' => $total_lines
+                'message' => "Bien {$mapped_data['reference']} importé avec succès",
+                'post_id' => $post_id
             ];
-
         } catch (\Exception $e) {
-            $this->handleError($e);
             return [
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => $e->getMessage(),
+                'post_id' => null
             ];
-        } finally {
-            \UpImmo\Helpers\ZipHelper::cleanupTemp();
         }
     }
 
-    public function validate(string $file_path): bool {
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Validation du fichier : ' . $file_path);
-            error_log('UP_IMMO - Le fichier existe : ' . (file_exists($file_path) ? 'oui' : 'non'));
-            error_log('UP_IMMO - Extension : ' . pathinfo($file_path, PATHINFO_EXTENSION));
-            if (is_dir($file_path)) {
-                error_log('UP_IMMO - C\'est un dossier');
+    public function import(string $filePath): array {
+        $rows = $this->readData($filePath);
+        $results = [];
+
+        foreach ($rows as $row) {
+            $results[] = $this->importRow($row);
+        }
+
+        return $results;
+    }
+
+    protected function readCSV(string $filePath): array {
+        error_log('UP_IMMO - Lecture du CSV : ' . $filePath);
+
+        if (!file_exists($filePath)) {
+            throw new \Exception('Fichier introuvable : ' . $filePath);
+        }
+
+        // Lire le contenu du fichier
+        $content = file_get_contents($filePath);
+        if ($content === false) {
+            throw new \Exception('Impossible de lire le fichier');
+        }
+
+        // Convertir l'encodage si nécessaire
+        if ($this->encoding !== 'UTF-8') {
+            $content = mb_convert_encoding($content, 'UTF-8', $this->encoding);
+        }
+
+        // Remplacer le séparateur !# par un caractère unique (par exemple |)
+        $content = str_replace('!#', '|', $content);
+        
+        // Créer un fichier temporaire
+        $tmpFile = tempnam(sys_get_temp_dir(), 'csv_');
+        if (!$tmpFile) {
+            throw new \Exception('Impossible de créer le fichier temporaire');
+        }
+
+        // Écrire le contenu modifié
+        if (file_put_contents($tmpFile, $content) === false) {
+            unlink($tmpFile);
+            throw new \Exception('Impossible d\'écrire dans le fichier temporaire');
+        }
+
+        // Lire le CSV avec le nouveau séparateur
+        $handle = fopen($tmpFile, 'r');
+        if (!$handle) {
+            unlink($tmpFile);
+            throw new \Exception('Impossible d\'ouvrir le fichier temporaire');
+        }
+
+        $rows = [];
+        while (($data = fgetcsv($handle, 0, '|')) !== false) {
+            $rows[] = array_map('trim', $data);
+        }
+
+        // Nettoyage
+        fclose($handle);
+        unlink($tmpFile);
+
+        error_log('UP_IMMO - Nombre de lignes lues : ' . count($rows));
+        return $rows;
+    }
+
+    protected function mapData(array $row): array {
+        // Récupérer le mapping depuis les options
+        $mapping = get_option('up_immo_mapping_json');
+        if (empty($mapping)) {
+            error_log('UP_IMMO - Erreur : Mapping non configuré');
+            throw new \Exception('Configuration du mapping manquante');
+        }
+
+        // Décoder le JSON si nécessaire
+        if (is_string($mapping)) {
+            $mapping = json_decode($mapping, true);
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                error_log('UP_IMMO - Erreur : JSON mapping invalide');
+                throw new \Exception('Configuration du mapping invalide');
             }
         }
 
-        return file_exists($file_path) && 
-               !is_dir($file_path) && 
-               pathinfo($file_path, PATHINFO_EXTENSION) === 'csv';
-    }
+        // Fonction helper pour nettoyer et convertir l'encodage
+        $cleanAndConvert = function($value) {
+            if (empty($value)) return '';
+            
+            // Convertir l'encodage
+            $value = $this->encoding !== 'UTF-8' 
+                ? mb_convert_encoding($value, 'UTF-8', $this->encoding) 
+                : $value;
+            
+            // Remplacer les caractères problématiques
+            $search = [
+                chr(233), chr(232), chr(224), chr(234), chr(244), 
+                chr(238), chr(251), chr(231), chr(226), chr(235),
+                chr(239), chr(249), chr(252), chr(228), chr(246),
+                chr(171), chr(187)
+            ];
+            $replace = [
+                'é', 'è', 'à', 'ê', 'ô', 
+                'î', 'û', 'ç', 'â', 'ë',
+                'ï', 'ù', 'ü', 'ä', 'ö',
+                '"', '"'
+            ];
+            $value = str_replace($search, $replace, $value);
+            
+            // Nettoyer les espaces multiples et les retours à la ligne
+            $value = preg_replace('/\s+/', ' ', $value);
+            $value = trim($value);
+            
+            return $value;
+        };
 
-    public function getProgress(): array {
-        return $this->progress;
-    }
-
-    private function createOrUpdateBien(array $data): int {
-        // Mapper les données
-        $mapped_data = [
-            'reference' => sanitize_text_field($data[1] ?? ''),
-            'titre' => sanitize_text_field(mb_convert_encoding($data[19] ?? '', 'UTF-8', 'ISO-8859-1')),
-            'description' => wp_kses_post(mb_convert_encoding($data[20] ?? '', 'UTF-8', 'ISO-8859-1')),
-            'prix' => sanitize_text_field($data[10] ?? ''),
-            'surface' => sanitize_text_field($data[15] ?? ''),
-            'pieces' => sanitize_text_field($data[17] ?? ''),
-            'chambres' => sanitize_text_field($data[18] ?? ''),
-            'code_postal' => sanitize_text_field($data[4] ?? ''),
-            'ville' => sanitize_text_field(mb_convert_encoding($data[5] ?? '', 'UTF-8', 'ISO-8859-1')),
-            'dpe' => sanitize_text_field($data[176] ?? ''),
-            'contact_tel' => sanitize_text_field($data[104] ?? ''),
-            'contact_email' => sanitize_email($data[106] ?? '')
-        ];
-
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Données mappées : ' . print_r($mapped_data, true));
+        $mapped_data = [];
+        foreach ($mapping as $field => $index) {
+            $value = $row[$index] ?? '';
+            
+            // Appliquer les transformations nécessaires selon le champ
+            switch ($field) {
+                case 'description':
+                    // Convertir les <br> en retours à la ligne avant nettoyage
+                    $value = str_replace('<br>', "\n", $value);
+                    $value = $cleanAndConvert($value);
+                    // Restaurer les <br> après nettoyage
+                    $value = str_replace("\n", '<br>', $value);
+                    $mapped_data[$field] = wp_kses_post($value);
+                    break;
+                case 'contact_email':
+                    $mapped_data[$field] = sanitize_email($value);
+                    break;
+                default:
+                    $mapped_data[$field] = sanitize_text_field($cleanAndConvert($value));
+            }
         }
 
-        $post_data = [
-            'post_type' => 'bien',
-            'post_title' => $mapped_data['titre'],
-            'post_excerpt' => $mapped_data['description'],
-            'post_status' => 'publish',
-            'comment_status' => 'closed',
-            'ping_status' => 'closed'
-        ];
+        // Ajouter les images si présentes
+        $mapped_data['images'] = $this->extractImages($row);
 
-        // Vérifier si un bien avec cette référence existe déjà
-        $existing_posts = get_posts([
-            'post_type' => 'bien',
-            'meta_key' => 'reference',
-            'meta_value' => $mapped_data['reference'],
-            'posts_per_page' => 1
+        error_log('UP_IMMO - Données mappées : ' . print_r($mapped_data, true));
+        return $mapped_data;
+    }
+
+    protected function extractImages(array $row): array {
+        $images = [];
+        // Images principales (84-92)
+        for ($i = 84; $i <= 92; $i++) {
+            if (!empty($row[$i])) {
+                $images[] = esc_url_raw($row[$i]);
+            }
+        }
+        // Images supplémentaires (163-167)
+        for ($i = 163; $i <= 167; $i++) {
+            if (!empty($row[$i])) {
+                $images[] = esc_url_raw($row[$i]);
+            }
+        }
+        return $images;
+    }
+
+    protected function createPost(array $data): int {
+        // Vérifier les données requises
+        if (empty($data['titre']) && empty($data['reference'])) {
+            throw new \Exception('Titre ou référence manquant');
+        }
+
+        $post_id = wp_insert_post([
+            'post_title' => $data['titre'] ?: $data['reference'],
+            'post_content' => $data['description'] ?? '',
+            'post_status' => 'publish',
+            'post_type' => 'bien'
         ]);
 
-        if (!empty($existing_posts)) {
-            $post_data['ID'] = $existing_posts[0]->ID;
-        }
-
-        // Insérer ou mettre à jour le post
-        $post_id = wp_insert_post($post_data);
-
-        // Vérifier si l'insertion a réussi
         if (!$post_id || is_wp_error($post_id)) {
-            $error_message = is_wp_error($post_id) ? $post_id->get_error_message() : 'Erreur inconnue';
-            throw new \Exception('Erreur lors de la création du bien : ' . $error_message);
+            throw new \Exception('Erreur lors de la création du bien');
         }
 
         // Mettre à jour les meta données
-        foreach ($mapped_data as $key => $value) {
-            update_post_meta($post_id, $key, $value);
+        foreach ($data as $key => $value) {
+            if ($key !== 'images' && $key !== 'titre' && $key !== 'description') {
+                update_post_meta($post_id, $key, $value);
+            }
         }
 
-        // Mise à jour des taxonomies
+        return $post_id;
+    }
+
+    private function updateTaxonomies(int $post_id, array $data): void {
         // Type de bien
-        $type_term = term_exists(mb_convert_encoding($data[3] ?? '', 'UTF-8', 'ISO-8859-1'), 'type_de_bien');
+        $type_term = term_exists(mb_convert_encoding($data[3] ?? '', 'UTF-8', $this->encoding), 'type_de_bien');
         if (!$type_term) {
             $type_term = wp_insert_term(
-                mb_convert_encoding($data[3] ?? '', 'UTF-8', 'ISO-8859-1'),
+                mb_convert_encoding($data[3] ?? '', 'UTF-8', $this->encoding),
                 'type_de_bien'
             );
         }
@@ -266,10 +266,10 @@ class CSVImportStrategy implements ImportStrategyInterface {
         }
 
         // Ville
-        $ville_term = term_exists(mb_convert_encoding($data[5] ?? '', 'UTF-8', 'ISO-8859-1'), 'ville');
+        $ville_term = term_exists(mb_convert_encoding($data[5] ?? '', 'UTF-8', $this->encoding), 'ville');
         if (!$ville_term) {
             $ville_term = wp_insert_term(
-                mb_convert_encoding($data[5] ?? '', 'UTF-8', 'ISO-8859-1'),
+                mb_convert_encoding($data[5] ?? '', 'UTF-8', $this->encoding),
                 'ville'
             );
         }
@@ -277,7 +277,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
             wp_set_object_terms($post_id, (int)$ville_term['term_id'], 'ville');
         }
 
-        // Disponibilité (basé sur le champ 12)
+        // Disponibilité
         $dispo = ($data[12] ?? '') === 'NON' ? 'Disponible' : 'Vendu';
         $dispo_term = term_exists($dispo, 'disponibilite');
         if (!$dispo_term) {
@@ -286,164 +286,80 @@ class CSVImportStrategy implements ImportStrategyInterface {
         if (!is_wp_error($dispo_term)) {
             wp_set_object_terms($post_id, (int)$dispo_term['term_id'], 'disponibilite');
         }
-
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Taxonomies mises à jour pour le bien ' . $post_id);
-        }
-
-        // Importer les images
-        $images = array_filter($data, function($value) {
-            return preg_match('/^https?:\/\/.*\.(jpg|jpeg|png|gif)$/i', $value);
-        });
-
-        if (!empty($images)) {
-            $this->sendProgressUpdate('Import des images...', null);
-            foreach ($images as $image_url) {
-                try {
-                    if (!$this->imageExists($post_id, $image_url)) {
-                        $attachment_id = $this->importImage($post_id, $image_url);
-                        if ($attachment_id) {
-                            // Définir l'image à la une si c'est la première image
-                            if (!has_post_thumbnail($post_id)) {
-                                set_post_thumbnail($post_id, $attachment_id);
-                            }
-                        }
-                    }
-                } catch (\Exception $e) {
-                    error_log('UP_IMMO - Erreur import image : ' . $e->getMessage());
-                }
-            }
-        }
-
-        return $post_id;
     }
 
-    private function imageExists($post_id, $image_url): bool {
-        $args = array(
+    private function importImages(int $post_id, array $image_urls): void {
+        foreach ($image_urls as $image_url) {
+            if (empty($image_url)) continue;
+
+            // Vérifier si l'image existe déjà
+            if ($this->imageExists($post_id, $image_url)) continue;
+
+            try {
+                $this->importImage($post_id, $image_url);
+            } catch (\Exception $e) {
+                error_log('UP_IMMO - Erreur import image : ' . $e->getMessage());
+            }
+        }
+    }
+
+    private function importImage(int $post_id, string $image_url): int|false {
+        // Télécharger l'image
+        $tmp_file = download_url($image_url);
+        if (is_wp_error($tmp_file)) {
+            throw new \Exception('Erreur téléchargement : ' . $tmp_file->get_error_message());
+        }
+
+        // Préparer le fichier pour l'import
+        $file_array = [
+            'name' => basename($image_url),
+            'tmp_name' => $tmp_file
+        ];
+
+        // Ne pas vérifier le type MIME pour les images distantes
+        add_filter('upload_mimes', function($mimes) {
+            $mimes['jpg|jpeg|jpe'] = 'image/jpeg';
+            return $mimes;
+        });
+
+        // Désactiver le contrôle du type de fichier
+        add_filter('wp_check_filetype_and_ext', function($data, $file, $filename, $mimes) {
+            $filetype = wp_check_filetype($filename);
+            return [
+                'ext' => $filetype['ext'],
+                'type' => $filetype['type'],
+                'proper_filename' => $filename
+            ];
+        }, 10, 4);
+
+        // Importer l'image
+        $attachment_id = media_handle_sideload($file_array, $post_id);
+
+        if (is_wp_error($attachment_id)) {
+            @unlink($tmp_file);
+            throw new \Exception('Erreur import : ' . $attachment_id->get_error_message());
+        }
+
+        // Sauvegarder l'URL source
+        update_post_meta($attachment_id, '_source_url', $image_url);
+
+        return $attachment_id;
+    }
+
+    private function imageExists(int $post_id, string $image_url): bool {
+        $args = [
             'post_type' => 'attachment',
             'post_parent' => $post_id,
             'meta_key' => '_source_url',
             'meta_value' => $image_url,
             'posts_per_page' => 1
-        );
+        ];
         
         $existing = get_posts($args);
         return !empty($existing);
     }
 
-    private function importImage($post_id, $image_url): int|false {
-        try {
-            if (empty($image_url)) {
-                return false;
-            }
-
-            $this->sendProgressUpdate('Import de l\'image : ' . basename($image_url), null);
-
-            // Télécharger l'image
-            $tmp_file = download_url($image_url);
-            if (is_wp_error($tmp_file)) {
-                throw new \Exception('Erreur téléchargement : ' . $tmp_file->get_error_message());
-            }
-
-            // Préparer le fichier pour l'import
-            $file_array = array(
-                'name' => basename($image_url),
-                'tmp_name' => $tmp_file
-            );
-
-            // Ne pas vérifier le type MIME pour les images distantes
-            add_filter('upload_mimes', function($mimes) {
-                $mimes['jpg|jpeg|jpe'] = 'image/jpeg';
-                return $mimes;
-            });
-
-            // Désactiver le contrôle du type de fichier
-            add_filter('wp_check_filetype_and_ext', function($data, $file, $filename, $mimes) {
-                $filetype = wp_check_filetype($filename);
-                return array(
-                    'ext' => $filetype['ext'],
-                    'type' => $filetype['type'],
-                    'proper_filename' => $filename
-                );
-            }, 10, 4);
-
-            // Importer l'image
-            $attachment_id = media_handle_sideload($file_array, $post_id);
-
-            if (is_wp_error($attachment_id)) {
-                @unlink($tmp_file);
-                throw new \Exception('Erreur import : ' . $attachment_id->get_error_message());
-            }
-
-            // Sauvegarder l'URL source pour éviter les doublons
-            update_post_meta($attachment_id, '_source_url', $image_url);
-
-            return $attachment_id;
-
-        } catch (\Exception $e) {
-            error_log('UP_IMMO - ' . $e->getMessage());
-            return false;
-        }
-    }
-
-    private function mapDataToFields(array $data): array {
-        $mapped_data = [
-            'reference' => $data[1] ?? '', // Référence du bien
-            'type_transaction' => $data[2] ?? '',
-            'type_bien' => $data[3] ?? '',
-            'code_postal' => $data[4] ?? '',
-            'ville' => $data[5] ?? '',
-            'prix' => $data[10] ?? '',
-            'surface' => $data[15] ?? '',
-            'pieces' => $data[17] ?? '',
-            'chambres' => $data[18] ?? '',
-            'titre' => $data[19] ?? '',
-            'description' => $data[20] ?? '',
-            'annee_construction' => $data[26] ?? '',
-            'dpe' => $data[176] ?? '',
-            'contact_tel' => $data[104] ?? '',
-            'contact_email' => $data[106] ?? '',
-            'images' => array_filter($data, function($value) {
-                return preg_match('/^https?:\/\/.*\.(jpg|jpeg|png|gif)$/i', $value);
-            })
-        ];
-
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Données mappées : ' . print_r($mapped_data, true));
-        }
-
-        return $mapped_data;
-    }
-
-    private function sendProgressUpdate($message, $percentage) {
-        $response = [
-            'message' => is_string($message) ? $message : json_encode($message),
-            'percentage' => $percentage
-        ];
-
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Progress Update: ' . json_encode($response));
-        }
-
-        echo json_encode($response);
-        flush();
-        ob_flush();
-    }
-
-    private function handleError($error) {
-        $error_message = is_wp_error($error) ? $error->get_error_message() : 
-                       (is_object($error) ? json_encode($error) : (string)$error);
-        
-        $response = [
-            'success' => false,
-            'message' => "Erreur : " . $error_message
-        ];
-
-        if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Error: ' . json_encode($response));
-        }
-
-        echo json_encode($response);
-        die();
+    public function getProgress(): array {
+        return $this->progress;
     }
 } 

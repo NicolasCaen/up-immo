@@ -1,6 +1,5 @@
 <?php
 if (!defined('ABSPATH')) exit;
-$last_path = get_option('up_immo_import_path', '');
 
 // Liste des stratégies disponibles
 $strategies = [
@@ -37,22 +36,6 @@ $strategies = [
                         </select>
                         <p class="description">
                             <?php _e('Choisissez le type de fichier à importer', 'up-immo'); ?>
-                        </p>
-                    </td>
-                </tr>
-                <tr>
-                    <th scope="row">
-                        <label for="file_path"><?php _e('Chemin du fichier', 'up-immo'); ?></label>
-                    </th>
-                    <td>
-                        <input type="text" 
-                               id="file_path" 
-                               name="file_path" 
-                               class="regular-text" 
-                               value="<?php echo esc_attr($last_path); ?>"
-                               required>
-                        <p class="description">
-                            <?php _e('Chemin relatif depuis wp-content/', 'up-immo'); ?>
                         </p>
                     </td>
                 </tr>

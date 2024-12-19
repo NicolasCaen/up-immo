@@ -6,6 +6,7 @@ class BienPostType {
         add_action('init', [$this, 'register']);
         add_filter('manage_bien_posts_columns', [$this, 'addThumbnailColumn']);
         add_action('manage_bien_posts_custom_column', [$this, 'displayThumbnailColumn'], 10, 2);
+        add_action('before_delete_post', [$this, 'cleanupPostData']);
     }
 
     public function register(): void {
@@ -225,6 +226,27 @@ class BienPostType {
     public function displayThumbnailColumn($column, $post_id): void {
         if ($column === 'thumbnail') {
             echo get_the_post_thumbnail($post_id, [50, 50]);
+        }
+    }
+
+    public function cleanupPostData(int $post_id): void {
+        // Vérifier si c'est bien un 'bien' qu'on supprime
+        if (get_post_type($post_id) !== 'bien') {
+            return;
+        }
+
+        // Supprimer toutes les meta-données
+        $meta_keys = get_post_custom_keys($post_id);
+        if (!empty($meta_keys)) {
+            foreach ($meta_keys as $key) {
+                delete_post_meta($post_id, $key);
+            }
+        }
+
+        // Récupérer et supprimer les images attachées
+        $attachments = get_attached_media('', $post_id);
+        foreach ($attachments as $attachment) {
+            wp_delete_attachment($attachment->ID, true); // true = supprimer aussi le fichier
         }
     }
 } 

@@ -9,6 +9,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
     protected $progress = [];
     protected $encoding = 'ISO-8859-1';
     protected $zipHelper;
+    protected $logs = [];
 
     public function __construct($context = null) {
         $this->context = $context;
@@ -20,25 +21,23 @@ class CSVImportStrategy implements ImportStrategyInterface {
     }
 
     public function readData(string $filePath): array {
-        error_log('UP_IMMO - Vérification du type de chemin : ' . $filePath);
+        $this->addLog('Vérification du type de chemin : ' . $filePath);
         
-        // Construire le chemin complet si ne commence pas par /
         if (strpos($filePath, '/') !== 0 || strpos($filePath, ':') === false) {
             $fullPath = trailingslashit(WP_CONTENT_DIR) . ltrim($filePath, '/');
-            error_log('UP_IMMO - Chemin complet construit : ' . $fullPath);
+            $this->addLog('Chemin complet construit : ' . $fullPath);
         } else {
             $fullPath = $filePath;
         }
 
-        // Vérifier si c'est un dossier contenant un ZIP
         if (is_dir($fullPath)) {
-            error_log('UP_IMMO - Recherche dans le dossier : ' . $fullPath);
+            $this->addLog('Recherche dans le dossier : ' . $fullPath);
             try {
                 $csvPath = $this->zipHelper->extractCsvFromZip($fullPath);
-                error_log('UP_IMMO - CSV extrait : ' . $csvPath);
+                $this->addLog('CSV extrait : ' . $csvPath);
                 return $this->readCSV(WP_CONTENT_DIR . $csvPath);
             } catch (\Exception $e) {
-                error_log('UP_IMMO - Erreur extraction : ' . $e->getMessage());
+                $this->addLog('Erreur extraction : ' . $e->getMessage());
                 throw $e;
             }
         }
@@ -49,9 +48,16 @@ class CSVImportStrategy implements ImportStrategyInterface {
     public function importRow(array $row): array {
         try {
             $mapped_data = $this->mapData($row);
+            $this->addLog("Traitement du bien : {$mapped_data['reference']}");
+            
             $post_id = $this->createPost($mapped_data);
+            $this->addLog("Post créé/mis à jour avec ID : {$post_id}");
+            
             $this->updateTaxonomies($post_id, $row);
+            $this->addLog("Taxonomies mises à jour");
+            
             $this->importImages($post_id, $mapped_data['images']);
+            $this->addLog("Images importées");
             
             return [
                 'success' => true,
@@ -59,6 +65,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
                 'post_id' => $post_id
             ];
         } catch (\Exception $e) {
+            $this->addLog("Erreur : " . $e->getMessage());
             return [
                 'success' => false,
                 'message' => $e->getMessage(),
@@ -68,12 +75,21 @@ class CSVImportStrategy implements ImportStrategyInterface {
     }
 
     public function import(string $filePath): array {
+        // Vider les logs au début d'un nouvel import
+        $this->clearLogs();
+        
         $rows = $this->readData($filePath);
         $results = [];
 
         foreach ($rows as $row) {
             $results[] = $this->importRow($row);
         }
+
+        // Ajouter un log de fin d'import
+        $this->addLog("Import terminé - " . count($results) . " biens traités");
+        
+        // Optionnel : vider les logs après un délai
+        wp_schedule_single_event(time() + 300, 'up_immo_clear_logs'); // Nettoie après 5 minutes
 
         return $results;
     }
@@ -152,27 +168,29 @@ class CSVImportStrategy implements ImportStrategyInterface {
         $cleanAndConvert = function($value) {
             if (empty($value)) return '';
             
-            // Convertir l'encodage
-            $value = $this->encoding !== 'UTF-8' 
-                ? mb_convert_encoding($value, 'UTF-8', $this->encoding) 
-                : $value;
+            // Convertir l'encodage avec mb_convert_encoding
+            if ($this->encoding !== 'UTF-8') {
+                // Première tentative de conversion
+                $value = mb_convert_encoding($value, 'UTF-8', $this->encoding);
+                
+                // Si des caractères problématiques persistent
+                if (strpos($value, '') !== false) {
+                    // Deuxième tentative avec détection automatique
+                    $detected_encoding = mb_detect_encoding($value, ['ISO-8859-1', 'ISO-8859-15', 'UTF-8', 'ASCII']);
+                    if ($detected_encoding) {
+                        $value = mb_convert_encoding($value, 'UTF-8', $detected_encoding);
+                    } else {
+                        // Si aucun encodage n'est détecté, forcer ISO-8859-1
+                        $value = mb_convert_encoding($value, 'UTF-8', 'ISO-8859-1');
+                    }
+                }
+            }
             
-            // Remplacer les caractères problématiques
-            $search = [
-                chr(233), chr(232), chr(224), chr(234), chr(244), 
-                chr(238), chr(251), chr(231), chr(226), chr(235),
-                chr(239), chr(249), chr(252), chr(228), chr(246),
-                chr(171), chr(187)
-            ];
-            $replace = [
-                'é', 'è', 'à', 'ê', 'ô', 
-                'î', 'û', 'ç', 'â', 'ë',
-                'ï', 'ù', 'ü', 'ä', 'ö',
-                '"', '"'
-            ];
-            $value = str_replace($search, $replace, $value);
+            // Remplacer les caractères spéciaux problématiques
+            $value = str_replace('', 'À', $value);
             
-            // Nettoyer les espaces multiples et les retours à la ligne
+            // Nettoyer les caractères invisibles et espaces
+            $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value);
             $value = preg_replace('/\s+/', ' ', $value);
             $value = trim($value);
             
@@ -226,48 +244,59 @@ class CSVImportStrategy implements ImportStrategyInterface {
     }
 
     protected function createPost(array $data): int {
-        // Vérifier les données requises
-        if (empty($data['reference'])) {
-            throw new \Exception('Référence manquante');
-        }
-
-        // Rechercher si le bien existe déjà par sa référence
-        $existing_posts = get_posts([
-            'post_type' => 'bien',
-            'meta_key' => 'reference',
-            'meta_value' => $data['reference'],
-            'posts_per_page' => 1,
-        ]);
-
-        $post_data = [
-            'post_title' => $data['reference'] ?? $data['titre'],
-            'post_content' => $data['titre'] ?? '',
-            'post_excerpt' => $data['excerpt'] ?? $data['description'],
-            'post_status' => 'publish',
-            'post_type' => 'bien'
-        ];
-
-        if (!empty($existing_posts)) {
-            // Mise à jour du post existant
-            $post_data['ID'] = $existing_posts[0]->ID;
-            $post_id = wp_update_post($post_data);
-        } else {
-            // Création d'un nouveau post
-            $post_id = wp_insert_post($post_data);
-        }
-
-        if (!$post_id || is_wp_error($post_id)) {
-            throw new \Exception('Erreur lors de la création/mise à jour du bien');
-        }
-
-        // Mettre à jour les meta données
-        foreach ($data as $key => $value) {
-            if (!in_array($key, ['images', 'titre', 'description', 'excerpt'])) {
-                update_post_meta($post_id, $key, $value);
+        try {
+            // Vérifier les données requises
+            if (empty($data['reference'])) {
+                throw new \Exception('Référence manquante');
             }
-        }
 
-        return $post_id;
+            $this->addLog("Début création/mise à jour du bien : " . $data['reference']);
+
+            // Rechercher si le bien existe déjà par sa référence
+            $existing_posts = get_posts([
+                'post_type' => 'bien',
+                'meta_key' => 'reference',
+                'meta_value' => $data['reference'],
+                'posts_per_page' => 1,
+            ]);
+
+            $post_data = [
+                'post_title' => $data['reference'] ?? $data['titre'],
+                'post_content' => $data['titre'] ?? '',
+                'post_excerpt' => $data['excerpt'] ?? $data['description'],
+                'post_status' => 'publish',
+                'post_type' => 'bien'
+            ];
+
+            if (!empty($existing_posts)) {
+                $this->addLog("Bien existant trouvé avec ID : " . $existing_posts[0]->ID);
+                $post_data['ID'] = $existing_posts[0]->ID;
+                $post_id = wp_update_post($post_data, true);
+            } else {
+                $this->addLog("Création d'un nouveau bien");
+                $post_id = wp_insert_post($post_data, true);
+            }
+
+            if (is_wp_error($post_id)) {
+                throw new \Exception('Erreur WordPress : ' . $post_id->get_error_message());
+            }
+
+            $this->addLog("Post créé/mis à jour avec ID : " . $post_id);
+
+            // Mettre à jour les meta données
+            foreach ($data as $key => $value) {
+                if (!in_array($key, ['images', 'titre', 'description', 'excerpt'])) {
+                    $this->addLog("Mise à jour meta '$key' avec valeur : " . (is_array($value) ? json_encode($value) : $value));
+                    update_post_meta($post_id, $key, $value);
+                }
+            }
+
+            return $post_id;
+
+        } catch (\Exception $e) {
+            $this->addLog("ERREUR dans createPost : " . $e->getMessage());
+            throw $e;
+        }
     }
 
     private function updateTaxonomies(int $post_id, array $data): void {
@@ -307,18 +336,34 @@ class CSVImportStrategy implements ImportStrategyInterface {
     }
 
     private function importImages(int $post_id, array $image_urls): void {
-        foreach ($image_urls as $image_url) {
-            if (empty($image_url)) continue;
+        $existing_images = $this->getExistingImages($post_id);
+        $this->addLog("Début traitement des images - " . count($image_urls) . " images à traiter");
+        
+        foreach ($image_urls as $index => $image_url) {
+            if (empty($image_url)) {
+                $this->addLog("Image " . ($index + 1) . " : URL vide, ignorée");
+                continue;
+            }
 
-            // Vérifier si l'image existe déjà
-            if ($this->imageExists($post_id, $image_url)) continue;
+            // Vérifier si l'URL existe déjà
+            $existing_attachment_id = array_search($image_url, $existing_images);
+            
+            if ($existing_attachment_id !== false) {
+                $this->addLog("Image " . ($index + 1) . " : Déjà existante (ID: " . $existing_attachment_id . ")");
+                // L'image existe déjà, vérifier si elle a changé
+                $this->updateImageIfNeeded($existing_attachment_id, $image_url);
+                continue;
+            }
 
             try {
-                $this->importImage($post_id, $image_url);
+                $attachment_id = $this->importImage($post_id, $image_url);
+                $this->addLog("Image " . ($index + 1) . " : Importée avec succès (ID: " . $attachment_id . ")");
             } catch (\Exception $e) {
-                error_log('UP_IMMO - Erreur import image : ' . $e->getMessage());
+                $this->addLog("Image " . ($index + 1) . " : Erreur d'import - " . $e->getMessage());
             }
         }
+
+        $this->addLog("Fin du traitement des images");
     }
 
     private function importImage(int $post_id, string $image_url): int|false {
@@ -327,6 +372,8 @@ class CSVImportStrategy implements ImportStrategyInterface {
         if (is_wp_error($tmp_file)) {
             throw new \Exception('Erreur téléchargement : ' . $tmp_file->get_error_message());
         }
+
+        $this->addLog("Image téléchargée temporairement : " . basename($image_url));
 
         // Préparer le fichier pour l'import
         $file_array = [
@@ -364,20 +411,82 @@ class CSVImportStrategy implements ImportStrategyInterface {
         return $attachment_id;
     }
 
-    private function imageExists(int $post_id, string $image_url): bool {
+    private function updateImageIfNeeded(int $attachment_id, string $image_url): void {
+        // Vérifier si l'image distante a changé
+        $tmp_file = download_url($image_url);
+        if (is_wp_error($tmp_file)) {
+            $this->addLog("Impossible de télécharger l'image pour comparaison : " . $image_url);
+            return;
+        }
+
+        $local_file = get_attached_file($attachment_id);
+        if (!$local_file) {
+            $this->addLog("Fichier local introuvable pour l'image ID: " . $attachment_id);
+            unlink($tmp_file);
+            return;
+        }
+
+        // Comparer les fichiers
+        if (filesize($tmp_file) !== filesize($local_file) || 
+            md5_file($tmp_file) !== md5_file($local_file)) {
+            
+            $this->addLog("Mise à jour de l'image ID: " . $attachment_id . " (contenu modifié)");
+            
+            // Mettre à jour l'image
+            $file_array = [
+                'name' => basename($image_url),
+                'tmp_name' => $tmp_file
+            ];
+
+            $new_attachment_id = media_handle_sideload($file_array, $attachment_id);
+            if (!is_wp_error($new_attachment_id)) {
+                update_post_meta($new_attachment_id, '_source_url', $image_url);
+                $this->addLog("Image mise à jour avec succès (nouvel ID: " . $new_attachment_id . ")");
+            } else {
+                $this->addLog("Erreur lors de la mise à jour de l'image : " . $new_attachment_id->get_error_message());
+            }
+        } else {
+            $this->addLog("Image ID: " . $attachment_id . " inchangée, pas de mise à jour nécessaire");
+        }
+
+        unlink($tmp_file);
+    }
+
+    private function getExistingImages(int $post_id): array {
         $args = [
             'post_type' => 'attachment',
             'post_parent' => $post_id,
             'meta_key' => '_source_url',
-            'meta_value' => $image_url,
-            'posts_per_page' => 1
+            'posts_per_page' => -1
         ];
         
         $existing = get_posts($args);
-        return !empty($existing);
+        $images = [];
+        foreach ($existing as $post) {
+            $source_url = get_post_meta($post->ID, '_source_url', true);
+            if ($source_url) {
+                $images[] = $source_url;
+            }
+        }
+        return $images;
     }
 
     public function getProgress(): array {
         return $this->progress;
+    }
+
+    protected function addLog(string $message): void {
+        $this->logs[] = [
+            'time' => current_time('mysql'),
+            'message' => $message
+        ];
+        
+        // Stocker les logs en option WordPress
+        update_option('up_immo_import_logs', $this->logs, false);
+    }
+
+    protected function clearLogs(): void {
+        $this->logs = [];
+        delete_option('up_immo_import_logs');
     }
 } 

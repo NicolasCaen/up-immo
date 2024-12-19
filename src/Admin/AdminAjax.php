@@ -6,6 +6,7 @@ class AdminAjax {
     public function __construct() {
         add_action('wp_ajax_up_immo_get_progress', [$this, 'getProgress']);
         add_action('wp_ajax_up_immo_import', [$this, 'handleImport']);
+        add_action('wp_ajax_up_immo_get_logs', [$this, 'getLogs']);
     }
 
     public function getProgress() {
@@ -91,5 +92,10 @@ class AdminAjax {
                 'line' => $e->getLine()
             ]);
         }
+    }
+
+    public function getLogs(): void {
+        $logs = get_option('up_immo_import_logs', []);
+        wp_send_json_success($logs);
     }
 } 

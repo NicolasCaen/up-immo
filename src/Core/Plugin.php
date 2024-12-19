@@ -6,12 +6,14 @@ use UpImmo\Admin\AdminAjax;
 use UpImmo\Admin\SettingsPage;
 use UpImmo\Admin\ImportPage;
 use UpImmo\Import\ImportManager;
+use UpImmo\Filters\ContentFilters;
 
 class Plugin extends Singleton {
     private static $instance = null;
     private $admin = null;
     private $adminAjax = null;
     private $settings;
+    private $contentFilters;
 
     public static function getInstance(): self {
         if (null === self::$instance) {
@@ -21,6 +23,9 @@ class Plugin extends Singleton {
     }
 
     protected function __construct() {
+        // Initialiser les filtres de contenu
+        $this->contentFilters = new ContentFilters();
+
         // Initialiser les composants admin
         if (is_admin()) {
             $this->admin = new AdminPage();
@@ -33,7 +38,17 @@ class Plugin extends Singleton {
 
         // Initialiser le reste du plugin
         $this->init();
+
+        // Ajouter le hook de nettoyage lors de la désactivation
+        register_deactivation_hook(UP_IMMO_PLUGIN_FILE, [$this, 'deactivate']);
     }
+
+    public function deactivate(): void {
+        if ($this->contentFilters) {
+            $this->contentFilters->removeFilters();
+        }
+    }
+
     public function enqueueAdminStyles($hook): void {
         // Liste des pages où charger le CSS
         $allowed_pages = [

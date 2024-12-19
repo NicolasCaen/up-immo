@@ -3,6 +3,7 @@ namespace UpImmo\Import\Strategies;
 
 use UpImmo\Import\Interfaces\ImportStrategyInterface;
 use UpImmo\Helpers\ZipHelper;
+use UpImmo\Filters\ContentFilters;
 
 class CSVImportStrategy implements ImportStrategyInterface {
     protected $context;
@@ -10,10 +11,12 @@ class CSVImportStrategy implements ImportStrategyInterface {
     protected $encoding = 'ISO-8859-1';
     protected $zipHelper;
     protected $logs = [];
+    protected $contentFilters;
 
     public function __construct($context = null) {
         $this->context = $context;
         $this->zipHelper = new ZipHelper();
+        $this->contentFilters = new ContentFilters($this->encoding);
     }
 
     public function setEncoding(string $encoding): void {
@@ -49,6 +52,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
         try {
             $mapped_data = $this->mapData($row);
             $this->addLog("Traitement du bien : {$mapped_data['reference']}");
+            // $this->addLog("description : {$mapped_data['description']}");
             
             $post_id = $this->createPost($mapped_data);
             $this->addLog("Post créé/mis à jour avec ID : {$post_id}");
@@ -148,81 +152,28 @@ class CSVImportStrategy implements ImportStrategyInterface {
     }
 
     protected function mapData(array $row): array {
-        // Récupérer le mapping depuis les options
+        // Récupérer et décoder le mapping
         $mapping = get_option('up_immo_mapping_json');
         if (empty($mapping)) {
-            error_log('UP_IMMO - Erreur : Mapping non configuré');
             throw new \Exception('Configuration du mapping manquante');
         }
-
-        // Décoder le JSON si nécessaire
+    
         if (is_string($mapping)) {
             $mapping = json_decode($mapping, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                error_log('UP_IMMO - Erreur : JSON mapping invalide');
                 throw new \Exception('Configuration du mapping invalide');
             }
         }
-
-        // Fonction helper pour nettoyer et convertir l'encodage
-        $cleanAndConvert = function($value) {
-            if (empty($value)) return '';
-            
-            // Convertir l'encodage avec mb_convert_encoding
-            if ($this->encoding !== 'UTF-8') {
-                // Première tentative de conversion
-                $value = mb_convert_encoding($value, 'UTF-8', $this->encoding);
-                
-                // Si des caractères problématiques persistent
-                if (strpos($value, '') !== false) {
-                    // Deuxième tentative avec détection automatique
-                    $detected_encoding = mb_detect_encoding($value, ['ISO-8859-1', 'ISO-8859-15', 'UTF-8', 'ASCII']);
-                    if ($detected_encoding) {
-                        $value = mb_convert_encoding($value, 'UTF-8', $detected_encoding);
-                    } else {
-                        // Si aucun encodage n'est détecté, forcer ISO-8859-1
-                        $value = mb_convert_encoding($value, 'UTF-8', 'ISO-8859-1');
-                    }
-                }
-            }
-            
-            // Remplacer les caractères spéciaux problématiques
-            $value = str_replace('', 'À', $value);
-            
-            // Nettoyer les caractères invisibles et espaces
-            $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value);
-            $value = preg_replace('/\s+/', ' ', $value);
-            $value = trim($value);
-            
-            return $value;
-        };
-
+    
         $mapped_data = [];
         foreach ($mapping as $field => $index) {
             $value = $row[$index] ?? '';
-            
-            // Appliquer les transformations nécessaires selon le champ
-            switch ($field) {
-                case 'description':
-                    // Convertir les <br> en retours à la ligne avant nettoyage
-                    $value = str_replace('<br>', "\n", $value);
-                    $value = $cleanAndConvert($value);
-                    // Restaurer les <br> après nettoyage
-                    $value = str_replace("\n", '<br>', $value);
-                    $mapped_data[$field] = wp_kses_post($value);
-                    break;
-                case 'contact_email':
-                    $mapped_data[$field] = sanitize_email($value);
-                    break;
-                default:
-                    $mapped_data[$field] = sanitize_text_field($cleanAndConvert($value));
-            }
+            $mapped_data[$field] = ContentFilters::applyFilters($value);
         }
-
-        // Ajouter les images si présentes
+    
+        // Ajouter les images
         $mapped_data['images'] = $this->extractImages($row);
-
-        error_log('UP_IMMO - Données mappées : ' . print_r($mapped_data, true));
+    
         return $mapped_data;
     }
 
@@ -488,5 +439,12 @@ class CSVImportStrategy implements ImportStrategyInterface {
     protected function clearLogs(): void {
         $this->logs = [];
         delete_option('up_immo_import_logs');
+    }
+
+    public function __destruct() {
+        // Nettoyer les filtres à la fin
+        if ($this->contentFilters) {
+            $this->contentFilters->removeFilters();
+        }
     }
 } 

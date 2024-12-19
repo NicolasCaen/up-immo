@@ -37,3 +37,22 @@
     border-radius: 4px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 } 
+
+.bien-meta-box__items{
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.bien-meta-box__item{
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.bien-meta-box__item--description{
+width: 100%;
+}
+.bien-meta-box__item label{
+    font-weight: bold;
+}

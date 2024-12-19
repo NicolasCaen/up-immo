@@ -232,8 +232,9 @@ class CSVImportStrategy implements ImportStrategyInterface {
         }
 
         $post_id = wp_insert_post([
-            'post_title' => $data['titre'] ?: $data['reference'],
-            'post_content' => $data['description'] ?? '',
+            'post_title' => $data['reference'] ?? $data['titre'],
+            'post_content' => $data['titre'] ?? '',
+            'post_excerpt' => $data['excerpt'] ?? $data['description'],
             'post_status' => 'publish',
             'post_type' => 'bien'
         ]);

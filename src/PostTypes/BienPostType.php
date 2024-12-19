@@ -30,52 +30,48 @@ class BienPostType {
             'register_meta_box_cb' => [$this, 'addMetaBoxes']
         ]);
 
-        // Enregistrer les meta fields
-        register_post_meta('bien', 'reference', [
-            'type' => 'string',
-            'single' => true,
-            'show_in_rest' => true,
-        ]);
-        register_post_meta('bien', 'prix', [
-            'type' => 'string',
-            'single' => true,
-            'show_in_rest' => true,
-        ]);
-        register_post_meta('bien', 'surface', [
-            'type' => 'string',
-            'single' => true,
-            'show_in_rest' => true,
-        ]);
-        register_post_meta('bien', 'pieces', [
-            'type' => 'string',
-            'single' => true,
-            'show_in_rest' => true,
-        ]);
-        register_post_meta('bien', 'chambres', [
-            'type' => 'string',
-            'single' => true,
-            'show_in_rest' => true,
-        ]);
-        register_post_meta('bien', 'code_postal', [
-            'type' => 'string',
-            'single' => true,
-            'show_in_rest' => true,
-        ]);
-        register_post_meta('bien', 'dpe', [
-            'type' => 'string',
-            'single' => true,
-            'show_in_rest' => true,
-        ]);
-        register_post_meta('bien', 'contact_tel', [
-            'type' => 'string',
-            'single' => true,
-            'show_in_rest' => true,
-        ]);
-        register_post_meta('bien', 'contact_email', [
-            'type' => 'string',
-            'single' => true,
-            'show_in_rest' => true,
-        ]);
+        // Enregistrer automatiquement les meta fields basés sur le mapping
+        $mapping = get_option('up_immo_mapping_json');
+        if (!empty($mapping)) {
+            $mapping = is_string($mapping) ? json_decode($mapping, true) : $mapping;
+            
+            // Configuration des types pour chaque champ connu
+            $field_types = [
+                'reference' => 'string',
+                'titre' => 'string',
+                'description' => 'string',
+                'prix' => 'number',
+                'surface' => 'number',
+                'pieces' => 'integer',
+                'chambres' => 'integer',
+                'code_postal' => 'string',
+                'ville' => 'string',
+                'dpe' => 'string',
+                'contact_tel' => 'string',
+                'contact_email' => 'string'
+            ];
+
+            foreach ($mapping as $field => $index) {
+                $type = $field_types[$field] ?? 'string'; // Par défaut 'string' si non défini
+                
+                register_post_meta('bien', $field, [
+                    'type' => $type,
+                    'single' => true,
+                    'show_in_rest' => true,
+                    'sanitize_callback' => function($meta_value) use ($type) {
+                        switch ($type) {
+                            case 'number':
+                                return is_numeric($meta_value) ? floatval($meta_value) : 0;
+                            case 'integer':
+                                return is_numeric($meta_value) ? intval($meta_value) : 0;
+                            case 'string':
+                            default:
+                                return sanitize_text_field($meta_value);
+                        }
+                    }
+                ]);
+            }
+        }
     }
 
     public function addMetaBoxes($post): void {
@@ -89,62 +85,136 @@ class BienPostType {
         );
     }
 
+    protected function getMetaFields(): array {
+        $mapping = get_option('up_immo_mapping_json');
+        if (empty($mapping)) {
+            return [];
+        }
+
+        $mapping = is_string($mapping) ? json_decode($mapping, true) : $mapping;
+        
+        // Configuration par défaut pour les champs connus
+        $field_configs = [
+            'reference' => [
+                'label' => __('Référence:', 'up-immo'),
+                'type' => 'text',
+            ],
+            'titre' => [
+                'label' => __('Titre:', 'up-immo'),
+                'type' => 'text',
+            ],
+            'description' => [
+                'label' => __('Description:', 'up-immo'),
+                'type' => 'textarea',
+            ],
+            'prix' => [
+                'label' => __('Prix:', 'up-immo'),
+                'type' => 'number',
+            ],
+            'surface' => [
+                'label' => __('Surface:', 'up-immo'),
+                'type' => 'number',
+                'step' => '0.01',
+            ],
+            'pieces' => [
+                'label' => __('Pièces:', 'up-immo'),
+                'type' => 'number',
+            ],
+            'chambres' => [
+                'label' => __('Chambres:', 'up-immo'),
+                'type' => 'number',
+            ],
+            'code_postal' => [
+                'label' => __('Code postal:', 'up-immo'),
+                'type' => 'text',
+                'pattern' => '[0-9]{5}',
+            ],
+            'ville' => [
+                'label' => __('Ville:', 'up-immo'),
+                'type' => 'text',
+            ],
+            'dpe' => [
+                'label' => __('DPE:', 'up-immo'),
+                'type' => 'select',
+                'options' => ['A', 'B', 'C', 'D', 'E', 'F', 'G'],
+            ],
+            'contact_tel' => [
+                'label' => __('Téléphone:', 'up-immo'),
+                'type' => 'tel',
+            ],
+            'contact_email' => [
+                'label' => __('Email:', 'up-immo'),
+                'type' => 'email',
+            ],
+        ];
+
+        // Traiter tous les champs du mapping
+        $fields = [];
+        foreach ($mapping as $field => $index) {
+            if (isset($field_configs[$field])) {
+                $fields[$field] = $field_configs[$field];
+            } else {
+                // Configuration par défaut pour les champs non définis
+                $fields[$field] = [
+                    'label' => ucfirst(str_replace('_', ' ', $field)) . ':',
+                    'type' => 'text'
+                ];
+            }
+        }
+
+        return $fields;
+    }
+
     public function renderMetaBox($post): void {
-        // Récupérer les valeurs existantes
-        $reference = get_post_meta($post->ID, 'reference', true);
-        $prix = get_post_meta($post->ID, 'prix', true);
-        $surface = get_post_meta($post->ID, 'surface', true);
-        $pieces = get_post_meta($post->ID, 'pieces', true);
-        $chambres = get_post_meta($post->ID, 'chambres', true);
-        $code_postal = get_post_meta($post->ID, 'code_postal', true);
-        $dpe = get_post_meta($post->ID, 'dpe', true);
-        $contact_tel = get_post_meta($post->ID, 'contact_tel', true);
-        $contact_email = get_post_meta($post->ID, 'contact_email', true);
-
-        // Ajouter un nonce pour la sécurité
         wp_nonce_field('bien_meta_box', 'bien_meta_box_nonce');
+        
+        $fields = $this->getMetaFields();
+        if (empty($fields)) {
+            echo '<p>' . __('Veuillez configurer le mapping des champs dans les réglages.', 'up-immo') . '</p>';
+            return;
+        }
 
-        // Afficher les champs
-        ?>
-        <div class="bien-meta-box">
-            <p>
-                <label for="reference"><?php _e('Référence:', 'up-immo'); ?></label>
-                <input type="text" id="reference" name="reference" value="<?php echo esc_attr($reference); ?>">
-            </p>
-            <p>
-                <label for="prix"><?php _e('Prix:', 'up-immo'); ?></label>
-                <input type="text" id="prix" name="prix" value="<?php echo esc_attr($prix); ?>">
-            </p>
-            <p>
-                <label for="surface"><?php _e('Surface:', 'up-immo'); ?></label>
-                <input type="text" id="surface" name="surface" value="<?php echo esc_attr($surface); ?>">
-            </p>
-            <p>
-                <label for="pieces"><?php _e('Pièces:', 'up-immo'); ?></label>
-                <input type="text" id="pieces" name="pieces" value="<?php echo esc_attr($pieces); ?>">
-            </p>
-            <p>
-                <label for="chambres"><?php _e('Chambres:', 'up-immo'); ?></label>
-                <input type="text" id="chambres" name="chambres" value="<?php echo esc_attr($chambres); ?>">
-            </p>
-            <p>
-                <label for="code_postal"><?php _e('Code postal:', 'up-immo'); ?></label>
-                <input type="text" id="code_postal" name="code_postal" value="<?php echo esc_attr($code_postal); ?>">
-            </p>
-            <p>
-                <label for="dpe"><?php _e('DPE:', 'up-immo'); ?></label>
-                <input type="text" id="dpe" name="dpe" value="<?php echo esc_attr($dpe); ?>">
-            </p>
-            <p>
-                <label for="contact_tel"><?php _e('Téléphone:', 'up-immo'); ?></label>
-                <input type="text" id="contact_tel" name="contact_tel" value="<?php echo esc_attr($contact_tel); ?>">
-            </p>
-            <p>
-                <label for="contact_email"><?php _e('Email:', 'up-immo'); ?></label>
-                <input type="email" id="contact_email" name="contact_email" value="<?php echo esc_attr($contact_email); ?>">
-            </p>
-        </div>
-        <?php
+        echo '<div class="bien-meta-box__container"><div class="bien-meta-box__items">';
+        foreach ($fields as $key => $field) {
+            $value = get_post_meta($post->ID, $key, true);
+            
+            echo '<div class="bien-meta-box__item bien-meta-box__item--' . esc_attr($key) . '">';
+            echo '<label for="' . esc_attr($key) . '">' . esc_html($field['label']) . '</label>';
+            
+            switch ($field['type']) {
+                case 'textarea':
+                    echo '<textarea id="' . esc_attr($key) . '" name="' . esc_attr($key) . '">' . 
+                         esc_textarea($value) . '</textarea>';
+                    break;
+                    
+                case 'select':
+                    echo '<select id="' . esc_attr($key) . '" name="' . esc_attr($key) . '">';
+                    foreach ($field['options'] as $option) {
+                        echo '<option value="' . esc_attr($option) . '"' . 
+                             selected($value, $option, false) . '>' . 
+                             esc_html($option) . '</option>';
+                    }
+                    echo '</select>';
+                    break;
+                    
+                default:
+                    echo '<input type="' . esc_attr($field['type']) . '" ' .
+                         'id="' . esc_attr($key) . '" ' .
+                         'name="' . esc_attr($key) . '" ' .
+                         'value="' . esc_attr($value) . '"';
+                    
+                    if (isset($field['pattern'])) {
+                        echo ' pattern="' . esc_attr($field['pattern']) . '"';
+                    }
+                    if (isset($field['step'])) {
+                        echo ' step="' . esc_attr($field['step']) . '"';
+                    }
+                    
+                    echo '>';
+            }
+            echo '</div>';
+        }
+        echo '</div></div>';
     }
 
     public function addThumbnailColumn($columns): array {

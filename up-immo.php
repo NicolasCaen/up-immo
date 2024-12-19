@@ -53,3 +53,4 @@ function init_plugin() {
 }
 
 add_action('plugins_loaded', 'UpImmo\init_plugin'); 
+

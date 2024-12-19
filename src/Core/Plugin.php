@@ -27,13 +27,32 @@ class Plugin extends Singleton {
             $this->settings = new \UpImmo\Admin\SettingsPage();
             new \UpImmo\Admin\ImportPage();
             add_action('admin_enqueue_scripts', [$this->admin, 'enqueueScripts']);
+            add_action('admin_enqueue_scripts', [$this, 'enqueueAdminStyles']);
             $this->adminAjax = new AdminAjax();
         }
 
         // Initialiser le reste du plugin
         $this->init();
     }
+    public function enqueueAdminStyles($hook): void {
+        // Liste des pages où charger le CSS
+        $allowed_pages = [
+            'post.php',
+            'post-new.php',
+            'edit.php',
+            'toplevel_page_up-immo-settings'
+        ];
 
+        // Vérifier si nous sommes sur le type de post 'bien'
+        $screen = get_current_screen();
+
+        wp_enqueue_style(
+            'up-immo-admin',
+            plugins_url('/assets/css/admin.css', dirname(dirname(__FILE__))),
+            [],
+            filemtime(plugin_dir_path(dirname(dirname(__FILE__))) . 'assets/css/admin.css')
+        );
+    }
     public function init(): void {
         // Initialize Post Types
         new \UpImmo\PostTypes\BienPostType();

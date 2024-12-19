@@ -10,9 +10,9 @@ class ContentFilters {
     }
 
     public function initializeFilters(): void {
-        add_filter('up_immo_clean_import_data', [$this, 'defaultFilter'], 5);
-        add_filter('up_immo_clean_import_data', [$this, 'cleanData'], 10);
-        add_filter('up_immo_clean_import_data', [$this, 'handleEncoding'], 15);
+        add_filter('up_immo_clean_import_data', [$this, 'defaultFilter'], 5, 2);
+        add_filter('up_immo_clean_import_data', [$this, 'cleanData'], 10, 2);
+        add_filter('up_immo_clean_import_data', [$this, 'handleEncoding'], 15, 2);
     }
 
     public function removeFilters(): void {
@@ -24,28 +24,54 @@ class ContentFilters {
     /**
      * Filtre par défaut qui convertit en chaîne
      */
-    public function defaultFilter($value) {
+    public function defaultFilter($value, $field = '') {
         return $this->ensureString($value);
     }
 
     /**
      * Nettoie les données
      */
-    public function cleanData($value) {
+    public function cleanData($value, $field = '') {
         $value = $this->ensureString($value);
         
         if ($value === '') {
             return '';
         }
 
-        $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value);
-        if ($value === null) {
-            return '';
-        }
+        // Traitement spécifique selon le champ
+        switch ($field) {
+            case 'description':
+                error_log('UP_IMMO - Description : ' . $value);
+                // Nettoyer les caractères spéciaux problématiques
+                $value = str_replace(['', 'é', 'è', 'à', 'ê', 'â', 'î', 'ô', 'û', 'ë', 'ï', 'ü'], 
+                                   ['e', 'e', 'e', 'a', 'e', 'a', 'i', 'o', 'u', 'e', 'i', 'u'], 
+                                   $value);
+                                   error_log('UP_IMMO - Description 2 : ' . $value);
+                // Préserver les retours à la ligne
+                $value = str_replace(["\r\n", "\r", "\n"], '<br>', $value);
+                error_log('UP_IMMO - Description 3 : ' . $value);
+                // Nettoyer les autres caractères invisibles
+                $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value);
+                if ($value === null) return '';
+                error_log('UP_IMMO - Description 4 : ' . $value);
+                // Nettoyer les espaces multiples
+                $value = preg_replace('/\s+/', ' ', $value);
+                if ($value === null) return '';
+                error_log('UP_IMMO - Description 5 : ' . $value);
+                break;
 
-        $value = preg_replace('/\s+/', ' ', $value);
-        if ($value === null) {
-            return '';
+            case 'prix':
+                // Nettoyer les caractères non numériques
+                $value = preg_replace('/[^0-9.]/', '', $value);
+                break;
+
+            default:
+                // Nettoyage standard
+                $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value);
+                if ($value === null) return '';
+                
+                $value = preg_replace('/\s+/', ' ', $value);
+                if ($value === null) return '';
         }
 
         return trim($value);
@@ -54,7 +80,7 @@ class ContentFilters {
     /**
      * Gère l'encodage des données
      */
-    public function handleEncoding($value) {
+    public function handleEncoding($value, $field = '') {
         $value = $this->ensureString($value);
         
         if ($value === '') {
@@ -62,20 +88,24 @@ class ContentFilters {
         }
 
         if ($this->encoding !== 'UTF-8') {
-            $value = mb_convert_encoding($value, 'UTF-8', $this->encoding);
-            
-            if (strpos($value, '�') !== false) {
-                $detected_encoding = mb_detect_encoding($value, ['ISO-8859-1', 'ISO-8859-15', 'UTF-8', 'ASCII']);
-                $value = mb_convert_encoding($value, 'UTF-8', $detected_encoding ?: 'ISO-8859-1');
+            // Traitement spécifique selon le champ si nécessaire
+            switch ($field) {
+                case 'description':
+                    // Traitement spécial pour la description si nécessaire
+                    break;
+                default:
+                    $value = mb_convert_encoding($value, 'UTF-8', $this->encoding);
+                    
+                    if (strpos($value, '') !== false) {
+                        $detected_encoding = mb_detect_encoding($value, ['ISO-8859-1', 'ISO-8859-15', 'UTF-8', 'ASCII']);
+                        $value = mb_convert_encoding($value, 'UTF-8', $detected_encoding ?: 'ISO-8859-1');
+                    }
             }
         }
         
         return $value;
     }
 
-    /**
-     * Assure qu'une valeur est une chaîne
-     */
     private function ensureString($value): string {
         if ($value === null || $value === false) {
             return '';
@@ -91,7 +121,7 @@ class ContentFilters {
     /**
      * Méthode utilitaire pour appliquer tous les filtres
      */
-    public static function applyFilters($value) {
-        return apply_filters('up_immo_clean_import_data', $value);
+    public static function applyFilters($value, $field = '') {
+        return apply_filters('up_immo_clean_import_data', $value, $field);
     }
 } 

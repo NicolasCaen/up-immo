@@ -99,7 +99,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
     }
 
     protected function readCSV(string $filePath): array {
-        error_log('UP_IMMO - Lecture du CSV : ' . $filePath);
+        $this->addLog('Lecture du CSV : ' . $filePath);
 
         if (!file_exists($filePath)) {
             throw new \Exception('Fichier introuvable : ' . $filePath);
@@ -111,12 +111,20 @@ class CSVImportStrategy implements ImportStrategyInterface {
             throw new \Exception('Impossible de lire le fichier');
         }
 
-        // Convertir l'encodage si nécessaire
-        if ($this->encoding !== 'UTF-8') {
-            $content = mb_convert_encoding($content, 'UTF-8', $this->encoding);
+        // Détecter l'encodage réel du fichier
+        $detected_encoding = mb_detect_encoding($content, ['UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252'], true);
+        $this->addLog('Encodage détecté : ' . ($detected_encoding ?: 'inconnu'));
+
+        // Convertir en UTF-8 avec une méthode plus robuste
+        if ($detected_encoding && $detected_encoding !== 'UTF-8') {
+            // Première tentative avec l'encodage détecté
+            $content = iconv($detected_encoding, 'UTF-8//TRANSLIT//IGNORE', $content);
+        } else {
+            // Tentative avec Windows-1252 si la détection a échoué
+            $content = iconv('Windows-1252', 'UTF-8//TRANSLIT//IGNORE', $content);
         }
 
-        // Remplacer le séparateur !# par un caractère unique (par exemple |)
+        // Remplacer le séparateur !# par un caractère unique
         $content = str_replace('!#', '|', $content);
         
         // Créer un fichier temporaire
@@ -125,7 +133,8 @@ class CSVImportStrategy implements ImportStrategyInterface {
             throw new \Exception('Impossible de créer le fichier temporaire');
         }
 
-        // Écrire le contenu modifié
+        // Écrire le contenu converti avec BOM UTF-8
+        $content = "\xEF\xBB\xBF" . $content; // Ajouter BOM UTF-8
         if (file_put_contents($tmpFile, $content) === false) {
             unlink($tmpFile);
             throw new \Exception('Impossible d\'écrire dans le fichier temporaire');
@@ -138,16 +147,23 @@ class CSVImportStrategy implements ImportStrategyInterface {
             throw new \Exception('Impossible d\'ouvrir le fichier temporaire');
         }
 
+        // Définir l'encodage pour fgetcsv
+        setlocale(LC_ALL, 'fr_FR.UTF-8');
+
         $rows = [];
         while (($data = fgetcsv($handle, 0, '|')) !== false) {
-            $rows[] = array_map('trim', $data);
+            // Nettoyer chaque valeur
+            $data = array_map(function($value) {
+                return trim($value);
+            }, $data);
+            $rows[] = $data;
         }
 
         // Nettoyage
         fclose($handle);
         unlink($tmpFile);
 
-        error_log('UP_IMMO - Nombre de lignes lues : ' . count($rows));
+        $this->addLog('Nombre de lignes lues : ' . count($rows));
         return $rows;
     }
 
@@ -168,7 +184,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
         $mapped_data = [];
         foreach ($mapping as $field => $index) {
             $value = $row[$index] ?? '';
-            $mapped_data[$field] = ContentFilters::applyFilters($value);
+            $mapped_data[$field] = ContentFilters::applyFilters($value ,$field);
         }
     
         // Ajouter les images

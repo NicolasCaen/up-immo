@@ -184,7 +184,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
         $mapped_data = [];
         foreach ($mapping as $field => $index) {
             $value = $row[$index] ?? '';
-            $mapped_data[$field] = ContentFilters::applyFilters($value ,$field);
+            $mapped_data[$field] = ContentFilters::applyFilters($value, $field);
         }
     
         // Ajouter les images

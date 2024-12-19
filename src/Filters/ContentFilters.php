@@ -1,6 +1,19 @@
 <?php
 namespace UpImmo\Filters;
 
+/**
+ * La classe ContentFilters est utilisée pour gérer et appliquer des filtres
+ * sur les données importées dans le plugin UpImmo. En particulier, elle se concentre
+ * sur le nettoyage et la normalisation des données importées via le filtre 'up_immo_clean_import_data'.
+ * 
+ * Les filtres appliqués par cette classe incluent :
+ * - defaultFilter : Convertit les valeurs en chaînes de caractères.
+ * - cleanData : Nettoie les données en supprimant les caractères spéciaux et en préservant les retours à la ligne.
+ * - handleEncoding : Gère l'encodage des données pour s'assurer qu'elles sont en UTF-8.
+ * 
+ * Ces filtres sont ajoutés et supprimés dynamiquement lors de l'initialisation et de la suppression des filtres.
+ */
+
 class ContentFilters {
     protected $encoding;
 

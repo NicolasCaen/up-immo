@@ -245,7 +245,13 @@ class CSVImportStrategy implements ImportStrategyInterface {
             }
 
             if (is_wp_error($post_id)) {
-                throw new \Exception('Erreur WordPress : ' . $post_id->get_error_message());
+                throw new \Exception($post_id->get_error_message());
+            }
+
+            // Définir la première image comme thumbnail si elle existe
+            if (!empty($data['images'][0])) {
+                // Télécharger l'image et la définir comme thumbnail
+                $this->setFeaturedImage($post_id, $data['images'][0]);
             }
 
             $this->addLog("Post créé/mis à jour avec ID : " . $post_id);
@@ -263,6 +269,29 @@ class CSVImportStrategy implements ImportStrategyInterface {
         } catch (\Exception $e) {
             $this->addLog("ERREUR dans createPost : " . $e->getMessage());
             throw $e;
+        }
+    }
+
+    /**
+     * Télécharge une image et la définit comme thumbnail du post
+     */
+    protected function setFeaturedImage(int $post_id, string $image_url): void {
+        // Vérifier si l'URL est valide
+        if (!filter_var($image_url, FILTER_VALIDATE_URL)) {
+            return;
+        }
+
+        // Télécharger l'image
+        require_once(ABSPATH . 'wp-admin/includes/media.php');
+        require_once(ABSPATH . 'wp-admin/includes/file.php');
+        require_once(ABSPATH . 'wp-admin/includes/image.php');
+
+        // Télécharger l'image dans la bibliothèque de médias
+        $attachment_id = media_sideload_image($image_url, $post_id, '', 'id');
+
+        if (!is_wp_error($attachment_id)) {
+            // Définir l'image comme thumbnail du post
+            set_post_thumbnail($post_id, $attachment_id);
         }
     }
 

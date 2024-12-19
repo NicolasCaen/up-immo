@@ -2,11 +2,34 @@
 namespace UpImmo\PostTypes;
 
 class BienPostType {
+    private static $hooks_registered = false;
+
     public function __construct() {
         add_action('init', [$this, 'register']);
-        add_filter('manage_bien_posts_columns', [$this, 'addThumbnailColumn']);
-        add_action('manage_bien_posts_custom_column', [$this, 'displayThumbnailColumn'], 10, 2);
-        add_action('before_delete_post', [$this, 'cleanupPostData']);
+        
+        if (!self::$hooks_registered) {
+            // Un seul hook pour gérer les colonnes
+            add_filter('manage_bien_posts_columns', function($columns) {
+                // Supprimer d'abord la colonne featured_image
+                unset($columns['featured_image']);
+                
+                // Réorganiser les colonnes pour placer la miniature après la case à cocher
+                $new_columns = [];
+                foreach ($columns as $key => $value) {
+                    if ($key === 'title') {
+                        $new_columns['thumbnail'] = __('Miniature', 'up-immo');
+                    }
+                    $new_columns[$key] = $value;
+                }
+                
+                return $new_columns;
+            });
+            
+            add_action('manage_bien_posts_custom_column', [$this, 'displayThumbnailColumn'], 10, 2);
+            add_action('before_delete_post', [$this, 'cleanupPostData']);
+            
+            self::$hooks_registered = true;
+        }
     }
 
     public function register(): void {
@@ -218,14 +241,14 @@ class BienPostType {
         echo '</div></div>';
     }
 
-    public function addThumbnailColumn($columns): array {
-        $columns['thumbnail'] = __('Miniature', 'up-immo');
-        return $columns;
-    }
-
     public function displayThumbnailColumn($column, $post_id): void {
         if ($column === 'thumbnail') {
-            echo get_the_post_thumbnail($post_id, [50, 50]);
+            $thumbnail_id = get_post_thumbnail_id($post_id);
+            if ($thumbnail_id) {
+                echo wp_get_attachment_image($thumbnail_id, [100, 100], false);
+            } else { 
+                echo '<img src="' . plugins_url('assets/images/no-image.png', dirname(dirname(__FILE__))) . '" width="50" height="50" alt="Pas d\'image" />';
+            }
         }
     }
 

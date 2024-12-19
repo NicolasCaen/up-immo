@@ -227,25 +227,42 @@ class CSVImportStrategy implements ImportStrategyInterface {
 
     protected function createPost(array $data): int {
         // Vérifier les données requises
-        if (empty($data['titre']) && empty($data['reference'])) {
-            throw new \Exception('Titre ou référence manquant');
+        if (empty($data['reference'])) {
+            throw new \Exception('Référence manquante');
         }
 
-        $post_id = wp_insert_post([
+        // Rechercher si le bien existe déjà par sa référence
+        $existing_posts = get_posts([
+            'post_type' => 'bien',
+            'meta_key' => 'reference',
+            'meta_value' => $data['reference'],
+            'posts_per_page' => 1,
+        ]);
+
+        $post_data = [
             'post_title' => $data['reference'] ?? $data['titre'],
             'post_content' => $data['titre'] ?? '',
             'post_excerpt' => $data['excerpt'] ?? $data['description'],
             'post_status' => 'publish',
             'post_type' => 'bien'
-        ]);
+        ];
+
+        if (!empty($existing_posts)) {
+            // Mise à jour du post existant
+            $post_data['ID'] = $existing_posts[0]->ID;
+            $post_id = wp_update_post($post_data);
+        } else {
+            // Création d'un nouveau post
+            $post_id = wp_insert_post($post_data);
+        }
 
         if (!$post_id || is_wp_error($post_id)) {
-            throw new \Exception('Erreur lors de la création du bien');
+            throw new \Exception('Erreur lors de la création/mise à jour du bien');
         }
 
         // Mettre à jour les meta données
         foreach ($data as $key => $value) {
-            if ($key !== 'images' && $key !== 'titre' && $key !== 'description') {
+            if (!in_array($key, ['images', 'titre', 'description', 'excerpt'])) {
                 update_post_meta($post_id, $key, $value);
             }
         }

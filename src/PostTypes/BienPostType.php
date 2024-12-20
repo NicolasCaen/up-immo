@@ -28,6 +28,9 @@ class BienPostType {
             add_action('manage_bien_posts_custom_column', [$this, 'displayThumbnailColumn'], 10, 2);
             add_action('before_delete_post', [$this, 'cleanupPostData']);
             
+            // Ajouter le hook pour sauvegarder les images attachées
+            add_action('save_post_bien', [$this, 'saveAttachedImages'], 10, 2);
+            
             self::$hooks_registered = true;
         }
     }
@@ -295,5 +298,22 @@ class BienPostType {
         foreach ($attachments as $attachment) {
             wp_delete_attachment($attachment->ID, true); // true = supprimer aussi le fichier
         }
+    }
+
+    public function saveAttachedImages($post_id, $post): void {
+        // Vérifier si c'est une sauvegarde automatique
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            return;
+        }
+
+        // Récupérer les images attachées
+        $attachments = get_attached_media('image', $post_id);
+        $image_ids = [];
+        foreach ($attachments as $attachment) {
+            $image_ids[] = $attachment->ID;
+        }
+
+        // Sauvegarder les IDs dans les meta-données
+        update_post_meta($post_id, 'attached_images', implode(',', $image_ids));
     }
 } 

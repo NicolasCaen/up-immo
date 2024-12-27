@@ -7,6 +7,7 @@ use UpImmo\Admin\SettingsPage;
 use UpImmo\Admin\ImportPage;
 use UpImmo\Import\ImportManager;
 use UpImmo\Filters\ContentFilters;
+use UpImmo\Core\CronManager;
 
 class Plugin extends Singleton {
     private static $instance = null;
@@ -33,11 +34,14 @@ class Plugin extends Singleton {
             new \UpImmo\Admin\ImportPage();
             add_action('admin_enqueue_scripts', [$this->admin, 'enqueueScripts']);
             add_action('admin_enqueue_scripts', [$this, 'enqueueAdminStyles']);
+            add_action('init', [$this, 'initializeCronManager']);
             $this->adminAjax = new AdminAjax();
         }
 
         // Initialiser le reste du plugin
         $this->init();
+        
+        new CronManager();
 
         // Ajouter le hook de nettoyage lors de la désactivation
         register_deactivation_hook(UP_IMMO_PLUGIN_FILE, [$this, 'deactivate']);
@@ -92,5 +96,13 @@ class Plugin extends Singleton {
 
     public function registerTaxonomies(): void {
         // Registration logic for taxonomies
+    }
+
+    public function initializeCronManager() {
+        $cronManager = new CronManager();
+
+        // Enregistrer les hooks d'activation et de désactivation
+        register_activation_hook(UP_IMMO_PLUGIN_FILE, [$cronManager, 'scheduleCron']);
+        register_deactivation_hook(UP_IMMO_PLUGIN_FILE, [$cronManager, 'clearCron']);
     }
 } 

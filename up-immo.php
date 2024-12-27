@@ -52,5 +52,10 @@ function init_plugin() {
     Core\Plugin::getInstance()->init();
 }
 
-add_action('plugins_loaded', 'UpImmo\init_plugin'); 
+add_action('plugins_loaded', 'UpImmo\init_plugin');
+
+// Initialiser le CronManager
+add_action('init', function() {
+    new \UpImmo\Core\CronManager();
+}); 
 

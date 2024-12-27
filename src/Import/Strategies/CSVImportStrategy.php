@@ -170,21 +170,30 @@ class CSVImportStrategy implements ImportStrategyInterface {
     protected function mapData(array $row): array {
         // Récupérer et décoder le mapping
         $mapping = get_option('up_immo_mapping_json');
+        $this->addLog('Mapping brut récupéré : ' . print_r($mapping, true));
+        
         if (empty($mapping)) {
             throw new \Exception('Configuration du mapping manquante');
         }
-    
+
         if (is_string($mapping)) {
-            $mapping = json_decode($mapping, true);
+            $this->addLog('Tentative de décodage JSON du mapping');
+            $decoded_mapping = json_decode($mapping, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception('Configuration du mapping invalide');
+                $error_msg = 'Erreur JSON : ' . json_last_error_msg();
+                $this->addLog($error_msg);
+                throw new \Exception('Configuration du mapping invalide : ' . $error_msg);
             }
+            $mapping = $decoded_mapping;
         }
     
+        $this->addLog('Mapping décodé : ' . print_r($mapping, true));
+        
         $mapped_data = [];
         foreach ($mapping as $field => $index) {
             $value = $row[$index] ?? '';
             $mapped_data[$field] = ContentFilters::applyFilters($value, $field);
+            $this->addLog("Mapping champ '$field' (index $index) : " . $value);
         }
     
         // Ajouter les images
@@ -258,7 +267,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
 
             // Mettre à jour les meta données
             foreach ($data as $key => $value) {
-                if (!in_array($key, ['images', 'titre', 'description', 'excerpt'])) {
+                if (!in_array($key, ['images', 'titre', 'excerpt'])) {
                     $this->addLog("Mise à jour meta '$key' avec valeur : " . (is_array($value) ? json_encode($value) : $value));
                     update_post_meta($post_id, $key, $value);
                 }

@@ -1,0 +1,10 @@
+.wp-block-up-immo-bien-meta {
+    margin-bottom: 1rem;
+}
+
+/* Style dans l'éditeur uniquement */
+.editor-styles-wrapper .wp-block-up-immo-bien-meta {
+    border: 1px dashed #ddd;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.9);
+} 

@@ -42,7 +42,7 @@ class BienPostType {
                 'singular_name' => __('Bien', 'up-immo'),
             ],
             'public' => true,
-            'has_archive' => true,
+            'has_archive' => false,
             'supports' => [
                 'title',
                 'editor',
@@ -53,7 +53,7 @@ class BienPostType {
             ],
             'show_in_rest' => true,
             'menu_icon' => 'dashicons-building',
-            'rewrite' => ['slug' => 'biens'],
+            'rewrite' => ['slug' => 'ancien'],
             'register_meta_box_cb' => [$this, 'addMetaBoxes']
         ]);
 

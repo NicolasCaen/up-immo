@@ -26,12 +26,24 @@ class ContentFilters {
         add_filter('up_immo_clean_import_data', [$this, 'defaultFilter'], 5, 2);
         add_filter('up_immo_clean_import_data', [$this, 'cleanData'], 10, 2);
         add_filter('up_immo_clean_import_data', [$this, 'handleEncoding'], 15, 2);
+        
+        // Ajouter les filtres de formatage
+        add_filter('up_immo_format_prix', [$this, 'formatPrice'], 10, 1);
+        add_filter('up_immo_format_surface', [$this, 'formatSurface'], 10, 1);
+        add_filter('up_immo_format_pieces', [$this, 'formatPieces'], 10, 1);
+        add_filter('up_immo_format_chambres', [$this, 'formatChambres'], 10, 1);
     }
 
     public function removeFilters(): void {
         remove_filter('up_immo_clean_import_data', [$this, 'defaultFilter'], 5);
         remove_filter('up_immo_clean_import_data', [$this, 'cleanData'], 10);
         remove_filter('up_immo_clean_import_data', [$this, 'handleEncoding'], 15);
+        
+        // Retirer les filtres de formatage
+        remove_filter('up_immo_format_prix', [$this, 'formatPrice'], 10);
+        remove_filter('up_immo_format_surface', [$this, 'formatSurface'], 10);
+        remove_filter('up_immo_format_pieces', [$this, 'formatPieces'], 10);
+        remove_filter('up_immo_format_chambres', [$this, 'formatChambres'], 10);
     }
 
     /**
@@ -135,6 +147,37 @@ class ContentFilters {
      * Méthode utilitaire pour appliquer tous les filtres
      */
     public static function applyFilters($value, $field = '') {
-        return apply_filters('up_immo_clean_import_data', $value, $field);
+        $value = apply_filters('up_immo_clean_import_data', $value, $field);
+        
+        // Appliquer les filtres de formatage selon le champ
+        switch ($field) {
+            case 'prix':
+                return apply_filters('up_immo_format_prix', $value);
+            case 'surface':
+                return apply_filters('up_immo_format_surface', $value);
+            case 'pieces':
+                return apply_filters('up_immo_format_pieces', $value);
+            case 'chambres':
+                return apply_filters('up_immo_format_chambres', $value);
+            default:
+                return $value;
+        }
+    }
+
+    // Méthodes de formatage
+    public function formatPrice($value): string {
+        return number_format((float)$value, 0, ',', ' ') . ' €';
+    }
+
+    public function formatSurface($value): string {
+        return number_format((float)$value, 0, ',', ' ') . ' m²';
+    }
+
+    public function formatPieces($value): string {
+        return $value . ' pièce' . ($value > 1 ? 's' : '');
+    }
+
+    public function formatChambres($value): string {
+        return $value . ' chambre' . ($value > 1 ? 's' : '');
     }
 } 

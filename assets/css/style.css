@@ -1,0 +1,38 @@
+/* Styles de base pour le bloc */
+.wp-block-up-immo-bien-meta {
+    margin-bottom: 1rem;
+}
+
+/* Support des styles de bloc */
+.wp-block-up-immo-bien-meta.has-text-align-center {
+    text-align: center;
+}
+
+.wp-block-up-immo-bien-meta.has-text-align-right {
+    text-align: right;
+}
+
+.wp-block-up-immo-bien-meta.has-text-align-left {
+    text-align: left;
+}
+
+/* Support des marges */
+.wp-block-up-immo-bien-meta:not(:last-child) {
+    margin-bottom: var(--wp--style--block-gap, 1.5rem);
+}
+
+/* Support du padding */
+.wp-block-up-immo-bien-meta.has-background {
+    padding: var(--wp--style--block-gap, 1.5rem);
+}
+
+/* Support des bordures arrondies */
+.wp-block-up-immo-bien-meta.has-background {
+    border-radius: 4px;
+}
+
+/* Support de la typographie */
+.wp-block-up-immo-bien-meta {
+    font-family: var(--wp--preset--font-family--system);
+    line-height: var(--wp--custom--typography--line-height--normal);
+} 

@@ -1,7 +1,7 @@
 <?php
 /**
- * Plugin Name: UP Immo
- * Description: Plugin de gestion immobilière
+ * Plugin Name: Citizim | Ancien
+ * Description: Plugin de gestion immobilière dans l'ancien avec Import. 
  * Version: 1.0
  * Author: GEHIN Nicolas
  */
@@ -50,6 +50,7 @@ spl_autoload_register('UpImmo\autoloader');
 // Initialize plugin
 function init_plugin() {
     Core\Plugin::getInstance()->init();
+    new Core\GutenbergManager();
 }
 
 add_action('plugins_loaded', 'UpImmo\init_plugin');

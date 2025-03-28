@@ -111,17 +111,31 @@ class CSVImportStrategy implements ImportStrategyInterface {
             throw new \Exception('Impossible de lire le fichier');
         }
 
-        // Détecter l'encodage réel du fichier
-        $detected_encoding = mb_detect_encoding($content, ['UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252'], true);
+        // Détecter l'encodage réel du fichier avec une liste plus complète d'encodages possibles
+        $encodings = ['UTF-8', 'ISO-8859-1', 'ISO-8859-15', 'Windows-1252', 'CP1252', 'ASCII'];
+        $detected_encoding = mb_detect_encoding($content, $encodings, true);
         $this->addLog('Encodage détecté : ' . ($detected_encoding ?: 'inconnu'));
 
-        // Convertir en UTF-8 avec une méthode plus robuste
-        if ($detected_encoding && $detected_encoding !== 'UTF-8') {
-            // Première tentative avec l'encodage détecté
-            $content = iconv($detected_encoding, 'UTF-8//TRANSLIT//IGNORE', $content);
+        // Si l'encodage n'est pas détecté ou n'est pas UTF-8, essayer de convertir
+        if (!$detected_encoding || $detected_encoding !== 'UTF-8') {
+            // Essayer d'abord avec l'encodage détecté s'il existe
+            if ($detected_encoding) {
+                $this->addLog('Conversion depuis ' . $detected_encoding . ' vers UTF-8');
+                $converted = mb_convert_encoding($content, 'UTF-8', $detected_encoding);
+            } else {
+                // Essayer avec Windows-1252 qui est courant pour les CSV français
+                $this->addLog('Tentative de conversion depuis Windows-1252');
+                $converted = mb_convert_encoding($content, 'UTF-8', 'Windows-1252');
+            }
+            
+            // Vérifier si la conversion a réussi
+            if (!empty($converted)) {
+                $content = $converted;
+            } else {
+                $this->addLog('Avertissement: Conversion d\'encodage échouée, utilisation du contenu original');
+            }
         } else {
-            // Tentative avec Windows-1252 si la détection a échoué
-            $content = iconv('Windows-1252', 'UTF-8//TRANSLIT//IGNORE', $content);
+            $this->addLog('Le fichier est déjà en UTF-8, aucune conversion nécessaire');
         }
 
         // Remplacer le séparateur !# par un caractère unique
@@ -133,8 +147,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
             throw new \Exception('Impossible de créer le fichier temporaire');
         }
 
-        // Écrire le contenu converti avec BOM UTF-8
-        $content = "\xEF\xBB\xBF" . $content; // Ajouter BOM UTF-8
+        // Écrire le contenu converti sans BOM UTF-8 (peut causer des problèmes)
         if (file_put_contents($tmpFile, $content) === false) {
             unlink($tmpFile);
             throw new \Exception('Impossible d\'écrire dans le fichier temporaire');
@@ -152,8 +165,37 @@ class CSVImportStrategy implements ImportStrategyInterface {
 
         $rows = [];
         while (($data = fgetcsv($handle, 0, '|')) !== false) {
-            // Nettoyer chaque valeur
+            // Nettoyer et convertir chaque valeur
             $data = array_map(function($value) {
+                // S'assurer que la valeur est en UTF-8
+                if (!mb_check_encoding($value, 'UTF-8')) {
+                    // Essayer de convertir depuis Windows-1252 si ce n'est pas déjà de l'UTF-8
+                    $value = mb_convert_encoding($value, 'UTF-8', 'Windows-1252');
+                }
+                
+                // Correction spécifique pour les points d'interrogation qui devraient être des 'à'
+                $value = str_replace('?', 'à', $value);
+                
+                // Correction des caractères mal encodés courants
+                $replacements = [
+                    'Ã©' => 'é',
+                    'Ã¨' => 'è',
+                    'Ãª' => 'ê',
+                    'Ã«' => 'ë',
+                    'Ã ' => 'à',
+                    'Ã¢' => 'â',
+                    'Ã®' => 'î',
+                    'Ã¯' => 'ï',
+                    'Ã´' => 'ô',
+                    'Ã¶' => 'ö',
+                    'Ã¹' => 'ù',
+                    'Ã»' => 'û',
+                    'Ã¼' => 'ü',
+                    'Ã§' => 'ç'
+                ];
+                
+                $value = str_replace(array_keys($replacements), array_values($replacements), $value);
+                
                 return trim($value);
             }, $data);
             $rows[] = $data;
@@ -190,10 +232,47 @@ class CSVImportStrategy implements ImportStrategyInterface {
         $this->addLog('Mapping décodé : ' . print_r($mapping, true));
         
         $mapped_data = [];
+        // Configuration des types pour chaque champ connu
+        $field_types = [
+            'reference' => 'string',
+            'titre' => 'string',
+            'title' => 'string',
+            'description' => 'string',
+            'prix' => 'number',
+            'surface' => 'number',
+            'pieces' => 'integer',
+            'chambres' => 'integer',
+            'code_postal' => 'string',
+            'ville' => 'string',
+            'dpe' => 'string',
+            'contact_tel' => 'string',
+            'contact_email' => 'string'
+        ];
+        
         foreach ($mapping as $field => $index) {
             $value = $row[$index] ?? '';
-            $mapped_data[$field] = ContentFilters::applyFilters($value, $field);
-            $this->addLog("Mapping champ '$field' (index $index) : " . $value);
+            // Appliquer les filtres de contenu
+            $filtered_value = ContentFilters::applyFilters($value, $field);
+            
+            // Convertir selon le type attendu
+            $type = $field_types[$field] ?? 'string';
+            switch ($type) {
+                case 'number':
+                    // Remplacer la virgule par un point pour les nombres décimaux
+                    $filtered_value = str_replace(',', '.', $filtered_value);
+                    $mapped_data[$field] = is_numeric($filtered_value) ? floatval($filtered_value) : 0;
+                    break;
+                case 'integer':
+                    // S'assurer que la valeur est bien un entier
+                    $filtered_value = preg_replace('/[^0-9]/', '', $filtered_value);
+                    $mapped_data[$field] = !empty($filtered_value) ? intval($filtered_value) : 0;
+                    break;
+                case 'string':
+                default:
+                    $mapped_data[$field] = $filtered_value;
+            }
+            
+            $this->addLog("Mapping champ '$field' (index $index, type $type) : " . $value . " -> " . $mapped_data[$field]);
         }
     
         // Ajouter les images
@@ -236,13 +315,18 @@ class CSVImportStrategy implements ImportStrategyInterface {
                 'posts_per_page' => 1,
             ]);
 
+            // Utiliser le titre comme titre du post et la description comme contenu
             $post_data = [
-                'post_title' => $data['reference'] ?? $data['titre'],
-                'post_content' => $data['titre'] ?? '',
-                'post_excerpt' => $data['excerpt'] ?? $data['description'],
+                'post_title' => !empty($data['titre']) ? $data['titre'] : (!empty($data['title']) ? $data['title'] : $data['reference']),
+                'post_content' => '',
+                'post_excerpt' => !empty($data['description']) ? substr($data['description'], 0, 255) : '',
                 'post_status' => 'publish',
                 'post_type' => 'bien'
             ];
+            
+            // Log pour débogage
+            $this->addLog("Titre utilisé : " . $post_data['post_title']);
+            $this->addLog("Description utilisée : " . (strlen($post_data['post_content']) > 50 ? substr($post_data['post_content'], 0, 50) . '...' : $post_data['post_content']));
 
             if (!empty($existing_posts)) {
                 $this->addLog("Bien existant trouvé avec ID : " . $existing_posts[0]->ID);
@@ -267,7 +351,8 @@ class CSVImportStrategy implements ImportStrategyInterface {
 
             // Mettre à jour les meta données
             foreach ($data as $key => $value) {
-                if (!in_array($key, ['images', 'titre', 'excerpt'])) {
+                // Inclure le titre dans les métadonnées
+                if (!in_array($key, ['images', 'excerpt'])) {
                     $this->addLog("Mise à jour meta '$key' avec valeur : " . (is_array($value) ? json_encode($value) : $value));
                     update_post_meta($post_id, $key, $value);
                 }

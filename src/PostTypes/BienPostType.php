@@ -31,6 +31,9 @@ class BienPostType {
             // Ajouter le hook pour sauvegarder les images attachées
             add_action('save_post_bien', [$this, 'saveAttachedImages'], 10, 2);
             
+            // Ajouter le hook pour sauvegarder les métadonnées
+            add_action('save_post_bien', [$this, 'savePostMeta'], 10, 2);
+            
             self::$hooks_registered = true;
         }
     }
@@ -66,6 +69,7 @@ class BienPostType {
             $field_types = [
                 'reference' => 'string',
                 'titre' => 'string',
+                'title' => 'string',
                 'description' => 'string',
                 'prix' => 'number',
                 'surface' => 'number',
@@ -128,6 +132,10 @@ class BienPostType {
             ],
             'titre' => [
                 'label' => __('Titre:', 'up-immo'),
+                'type' => 'text',
+            ],
+            'title' => [
+                'label' => __('Title:', 'up-immo'),
                 'type' => 'text',
             ],
             'description' => [
@@ -315,5 +323,78 @@ class BienPostType {
 
         // Sauvegarder les IDs dans les meta-données
         update_post_meta($post_id, 'attached_images', implode(',', $image_ids));
+    }
+    
+    /**
+     * Sauvegarde les métadonnées du bien lors de la sauvegarde du post
+     */
+    public function savePostMeta($post_id, $post): void {
+        // Vérifier si c'est une sauvegarde automatique
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            return;
+        }
+        
+        // Vérifier le nonce
+        if (!isset($_POST['bien_meta_box_nonce']) || !wp_verify_nonce($_POST['bien_meta_box_nonce'], 'bien_meta_box')) {
+            return;
+        }
+        
+        // Vérifier les permissions
+        if (!current_user_can('edit_post', $post_id)) {
+            return;
+        }
+        
+        // Récupérer les champs configurés
+        $fields = $this->getMetaFields();
+        
+        // Configuration des types pour chaque champ connu
+        $field_types = [
+            'reference' => 'string',
+            'titre' => 'string',
+            'description' => 'string',
+            'prix' => 'number',
+            'surface' => 'number',
+            'pieces' => 'integer',
+            'chambres' => 'integer',
+            'code_postal' => 'string',
+            'ville' => 'string',
+            'dpe' => 'string',
+            'contact_tel' => 'string',
+            'contact_email' => 'string'
+        ];
+        
+        // Sauvegarder chaque champ
+        foreach ($fields as $key => $field) {
+            // Ignorer le champ des images attachées qui est géré séparément
+            if ($key === 'attached_images') {
+                continue;
+            }
+            
+            // Vérifier si le champ existe dans la requête
+            if (isset($_POST[$key])) {
+                $value = $_POST[$key];
+                
+                // Convertir selon le type attendu
+                $type = $field_types[$key] ?? 'string';
+                switch ($type) {
+                    case 'number':
+                        // Remplacer la virgule par un point pour les nombres décimaux
+                        $value = str_replace(',', '.', $value);
+                        $value = is_numeric($value) ? floatval($value) : 0;
+                        break;
+                    case 'integer':
+                        // S'assurer que la valeur est bien un entier
+                        $value = preg_replace('/[^0-9]/', '', $value);
+                        $value = !empty($value) ? intval($value) : 0;
+                        break;
+                    case 'string':
+                    default:
+                        $value = sanitize_text_field($value);
+                }
+                
+                // Mettre à jour la métadonnée
+                update_post_meta($post_id, $key, $value);
+            }
+        }
     }
 } 

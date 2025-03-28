@@ -63,26 +63,27 @@ class ContentFilters {
             return '';
         }
 
+        // Appliquer la correction des caractères spéciaux pour tous les champs textuels
+        if ($field !== 'prix' && $field !== 'surface' && $field !== 'pieces' && $field !== 'chambres') {
+            $value = $this->fixSpecialCharacters($value);
+        }
+        
         // Traitement spécifique selon le champ
         switch ($field) {
+            case 'titre':
+            case 'title':
+                // Nettoyer les caractères invisibles et espaces multiples
+                $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value) ?? $value;
+                $value = preg_replace('/\s+/', ' ', $value) ?? $value;
+                break;
+                
             case 'description':
-                error_log('UP_IMMO - Description : ' . $value);
-                // Nettoyer les caractères spéciaux problématiques
-                $value = str_replace(['', 'é', 'è', 'à', 'ê', 'â', 'î', 'ô', 'û', 'ë', 'ï', 'ü'], 
-                                   ['e', 'e', 'e', 'a', 'e', 'a', 'i', 'o', 'u', 'e', 'i', 'u'], 
-                                   $value);
-                                   error_log('UP_IMMO - Description 2 : ' . $value);
                 // Préserver les retours à la ligne
                 $value = str_replace(["\r\n", "\r", "\n"], '<br>', $value);
-                error_log('UP_IMMO - Description 3 : ' . $value);
-                // Nettoyer les autres caractères invisibles
-                $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value);
-                if ($value === null) return '';
-                error_log('UP_IMMO - Description 4 : ' . $value);
+                // Nettoyer les caractères invisibles
+                $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value) ?? $value;
                 // Nettoyer les espaces multiples
-                $value = preg_replace('/\s+/', ' ', $value);
-                if ($value === null) return '';
-                error_log('UP_IMMO - Description 5 : ' . $value);
+                $value = preg_replace('/\s+/', ' ', $value) ?? $value;
                 break;
 
             case 'prix':
@@ -92,11 +93,8 @@ class ContentFilters {
 
             default:
                 // Nettoyage standard
-                $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value);
-                if ($value === null) return '';
-                
-                $value = preg_replace('/\s+/', ' ', $value);
-                if ($value === null) return '';
+                $value = preg_replace('/[\x00-\x1F\x7F\xA0]/u', ' ', $value) ?? $value;
+                $value = preg_replace('/\s+/', ' ', $value) ?? $value;
         }
 
         return trim($value);
@@ -111,24 +109,10 @@ class ContentFilters {
         if ($value === '') {
             return '';
         }
-
-        if ($this->encoding !== 'UTF-8') {
-            // Traitement spécifique selon le champ si nécessaire
-            switch ($field) {
-                case 'description':
-                    // Traitement spécial pour la description si nécessaire
-                    break;
-                default:
-                    $value = mb_convert_encoding($value, 'UTF-8', $this->encoding);
-                    
-                    if (strpos($value, '') !== false) {
-                        $detected_encoding = mb_detect_encoding($value, ['ISO-8859-1', 'ISO-8859-15', 'UTF-8', 'ASCII']);
-                        $value = mb_convert_encoding($value, 'UTF-8', $detected_encoding ?: 'ISO-8859-1');
-                    }
-            }
-        }
         
-        return $value;
+        // Appliquer directement la correction des caractères spéciaux
+        // Cette méthode est plus efficace que de tenter de détecter l'encodage
+        return $this->fixSpecialCharacters($value);
     }
 
     private function ensureString($value): string {
@@ -141,6 +125,53 @@ class ContentFilters {
         }
         
         return (string)$value;
+    }
+    
+    /**
+     * Corrige les caractères spéciaux problématiques
+     */
+    private function fixSpecialCharacters(string $value): string {
+        // Remplacer directement les points d'interrogation qui remplacent les accents
+        $value = str_replace('?', 'à', $value);
+        
+        // Approche directe : utiliser utf8_decode pour les caractères mal encodés
+        $decoded = utf8_decode($value);
+        
+        // Si le décodage a fonctionné, le convertir en UTF-8
+        if (mb_check_encoding($decoded, 'ISO-8859-1')) {
+            return mb_convert_encoding($decoded, 'UTF-8', 'ISO-8859-1');
+        }
+        
+        // Si le décodage simple ne fonctionne pas, utiliser une table de correspondance
+        $replacements = [
+            // Corrections courantes pour le français
+            'Ã©' => 'é',
+            'Ã¨' => 'è',
+            'Ãª' => 'ê',
+            'Ã«' => 'ë',
+            'Ã ' => 'à',
+            'Ã¢' => 'â',
+            'Ã®' => 'î',
+            'Ã¯' => 'ï',
+            'Ã´' => 'ô',
+            'Ã¶' => 'ö',
+            'Ã¹' => 'ù',
+            'Ã»' => 'û',
+            'Ã¼' => 'ü',
+            'Ã§' => 'ç',
+            'Ã´' => 'ô',
+            'Ã¸' => 'ø',
+            // Remplacements pour les points d'interrogation
+            '?' => 'à',
+            'à ?' => 'à à',
+            'à?' => 'à à'
+        ];
+        
+        // Appliquer les remplacements
+        $value = str_replace(array_keys($replacements), array_values($replacements), $value);
+        
+        // Nettoyer les espaces multiples qui pourraient être créés
+        return preg_replace('/\s+/', ' ', $value);
     }
 
     /**

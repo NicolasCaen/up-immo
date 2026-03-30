@@ -20,8 +20,8 @@ class Plugin extends Singleton {
     protected function __construct() {
         // Initialiser les composants admin
         if (is_admin()) {
-            $this->admin = new AdminPage();
-            $this->adminAjax = new AdminAjax();
+            $this->admin = new \UpImmo\Admin\AdminPage();
+            $this->adminAjax = new \UpImmo\Admin\AdminAjax();
         }
 
         // Initialiser le reste du plugin

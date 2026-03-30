@@ -2,7 +2,7 @@
 /**
  * Plugin Name: UP Immo
  * Description: Plugin de gestion immobilière
- * Version: 1.2
+ * Version: 1.3.0
  * Author: GEHIN Nicolas
  */
 
@@ -13,11 +13,11 @@ if (!defined('ABSPATH')) {
 }
 
 // Constants
-define('UP_IMMO_VERSION', '1.2.0');
+define('UP_IMMO_VERSION', '1.3.0');
 define('UP_IMMO_PLUGIN_FILE', __FILE__);
 define('UP_IMMO_PATH', plugin_dir_path(__FILE__));
 define('UP_IMMO_URL', plugin_dir_url(__FILE__));
-define('DEBUG_UP_IMMO', true); // Constante de debug
+define('DEBUG_UP_IMMO', false); // Constante de debug
 
 // Définition des constantes manquantes
 if (!defined('UP_IMMO_PLUGIN_FILE')) {
@@ -46,9 +46,25 @@ function autoloader($class) {
 
 spl_autoload_register('UpImmo\autoloader');
 
+// Pré-charger les classes essentielles
+$base_dir = plugin_dir_path(__FILE__);
+$files_to_load = [
+    'src/Core/Singleton.php',
+    'src/Core/Plugin.php',
+    'src/Admin/AdminPage.php',
+    'src/Admin/AdminAjax.php'
+];
+
+foreach ($files_to_load as $file_rel_path) {
+    $full_path = $base_dir . $file_rel_path;
+    if (file_exists($full_path)) {
+        require_once $full_path;
+    }
+}
+
 // Initialize plugin
 function init_plugin() {
-    Core\Plugin::getInstance()->init();
+    \UpImmo\Core\Plugin::getInstance()->init();
 }
 
 add_action('plugins_loaded', 'UpImmo\init_plugin'); 

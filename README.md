@@ -2,6 +2,12 @@
 
 ## Changelog
 
+### 1.3.0 - 2026-03-30
+- **Correctif Critique** : Résolution de l'erreur fatale "Class AdminAjax not found" via un chargement robuste des classes.
+- **Robustesse** : Passage aux chemins absolus (`plugin_dir_path`) pour l'inclusion des fichiers sources.
+- **Maintenance** : Nettoyage des logs de debug et optimisation du constructeur principal.
+- **Standardisation** : Correction de l'implémentation de `CSVImportStrategy` pour respecter strictement son interface.
+
 ### 1.2.0 - 2026-03-30
 - **Import CSV** : Ajout des métadonnées DPE manquantes (`energie`, `energie_lettre`, `ges`, `ges_lettre`, `dpe_date`)
 - **Metabox** : Ajout des champs DPE éditables dans l'admin (énergie, lettre énergie, GES, lettre GES, date DPE)

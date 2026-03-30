@@ -49,6 +49,10 @@ class CSVImportStrategy implements ImportStrategyInterface {
     }
 
     public function import(string $file_path): array {
+        return $this->readData($file_path);
+    }
+
+    public function readData(string $file_path): array {
         try {
             $this->sendProgressUpdate('Début de l\'import...', 0);
             
@@ -184,6 +188,14 @@ class CSVImportStrategy implements ImportStrategyInterface {
 
     public function getProgress(): array {
         return $this->progress;
+    }
+
+    public function setEncoding(string $encoding): void {
+        // Not used yet but required by interface
+    }
+
+    public function importRow(array $row): int {
+        return $this->createOrUpdateBien($row);
     }
 
     private function createOrUpdateBien(array $data): int {

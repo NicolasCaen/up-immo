@@ -198,7 +198,12 @@ class CSVImportStrategy implements ImportStrategyInterface {
             'chambres' => sanitize_text_field($data[18] ?? ''),
             'code_postal' => sanitize_text_field($data[4] ?? ''),
             'ville' => sanitize_text_field(mb_convert_encoding($data[5] ?? '', 'UTF-8', 'ISO-8859-1')),
-            'dpe' => sanitize_text_field($data[176] ?? ''),
+            'dpe' => sanitize_text_field($data[324] ?? ''),
+            'energie' => sanitize_text_field($data[175] ?? ''),
+            'energie_lettre' => sanitize_text_field($data[176] ?? ''),
+            'ges' => sanitize_text_field($data[177] ?? ''),
+            'ges_lettre' => sanitize_text_field($data[178] ?? ''),
+            'dpe_date' => sanitize_text_field($data[323] ?? ''),
             'contact_tel' => sanitize_text_field($data[104] ?? ''),
             'contact_email' => sanitize_email($data[106] ?? '')
         ];
@@ -462,7 +467,12 @@ class CSVImportStrategy implements ImportStrategyInterface {
             'titre' => $data[19] ?? '',
             'description' => $data[20] ?? '',
             'annee_construction' => $data[26] ?? '',
-            'dpe' => $data[176] ?? '',
+            'dpe' => $data[324] ?? '',
+            'energie' => $data[175] ?? '',
+            'energie_lettre' => $data[176] ?? '',
+            'ges' => $data[177] ?? '',
+            'ges_lettre' => $data[178] ?? '',
+            'dpe_date' => $data[323] ?? '',
             'contact_tel' => $data[104] ?? '',
             'contact_email' => $data[106] ?? '',
             'images' => array_filter($data, function($value) {

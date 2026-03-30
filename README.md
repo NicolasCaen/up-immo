@@ -1,5 +1,11 @@
 # up-immo
 
+## Changelog
+
+### 1.2.0 - 2026-03-30
+- **Import CSV** : Ajout des métadonnées DPE manquantes (`energie`, `energie_lettre`, `ges`, `ges_lettre`, `dpe_date`)
+- **Metabox** : Ajout des champs DPE éditables dans l'admin (énergie, lettre énergie, GES, lettre GES, date DPE)
+
 ## Import automatique via navigateur
 
 Le plugin permet désormais de déclencher l'import depuis n'importe quel navigateur (pratique lorsqu'un cron serveur n'est pas disponible) :

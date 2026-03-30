@@ -2,7 +2,7 @@
 /**
  * Plugin Name: UP Immo
  * Description: Plugin de gestion immobilière
- * Version: 1.0
+ * Version: 1.1
  * Author: GEHIN Nicolas
  */
 
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Constants
-define('UP_IMMO_VERSION', '1.0.0');
+define('UP_IMMO_VERSION', '1.1.0');
 define('UP_IMMO_PLUGIN_FILE', __FILE__);
 define('UP_IMMO_PATH', plugin_dir_path(__FILE__));
 define('UP_IMMO_URL', plugin_dir_url(__FILE__));

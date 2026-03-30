@@ -277,11 +277,81 @@ class CSVImportStrategy implements ImportStrategyInterface {
             wp_set_object_terms($post_id, (int)$dispo_term['term_id'], 'disponibilite');
         }
 
+        // Importation des images
+        $this->handleImagesImport($post_id, $data);
+
         if (DEBUG_UP_IMMO) {
-            error_log('UP_IMMO - Taxonomies mises à jour pour le bien ' . $post_id);
+            error_log('UP_IMMO - Taxonomies et images mises à jour pour le bien ' . $post_id);
         }
 
         return $post_id;
+    }
+
+    /**
+     * Gère l'importation des images pour un bien
+     */
+    private function handleImagesImport(int $post_id, array $data): void {
+        if (DEBUG_UP_IMMO) {
+            error_log('UP_IMMO - handleImagesImport appelée pour le bien ' . $post_id);
+            error_log('UP_IMMO - Nombre total de colonnes dans data: ' . count($data));
+        }
+
+        // Les images se trouvent aux indices 85 à 93 selon le format CSV
+        $image_indices = range(85, 93);
+        $first_image_id = null;
+        $imported_count = 0;
+
+        foreach ($image_indices as $index) {
+            $image_url = $data[$index] ?? '';
+            
+            if (DEBUG_UP_IMMO && $index === 85) {
+                error_log('UP_IMMO - Vérification colonne ' . $index . ': ' . $image_url);
+            }
+            
+            if (empty($image_url)) {
+                continue;
+            }
+
+            // Si l'URL ne commence pas par http, c'est peut-être un chemin relatif ou invalide
+            if (!str_starts_with($image_url, 'http')) {
+                if (DEBUG_UP_IMMO) {
+                    error_log('UP_IMMO - URL invalide à l\'index ' . $index . ': ' . $image_url);
+                }
+                continue;
+            }
+
+            if (DEBUG_UP_IMMO) {
+                error_log('UP_IMMO - Tentative d\'import de l\'image à l\'index ' . $index . ': ' . $image_url);
+            }
+
+            $attachment_id = $this->importImage($post_id, $image_url);
+            
+            if ($attachment_id) {
+                $imported_count++;
+                if (!$first_image_id) {
+                    $first_image_id = $attachment_id;
+                }
+                if (DEBUG_UP_IMMO) {
+                    error_log('UP_IMMO - Image importée avec succès, ID: ' . $attachment_id);
+                }
+            } else {
+                if (DEBUG_UP_IMMO) {
+                    error_log('UP_IMMO - Échec de l\'import de l\'image: ' . $image_url);
+                }
+            }
+        }
+
+        if (DEBUG_UP_IMMO) {
+            error_log('UP_IMMO - Total images importées: ' . $imported_count);
+        }
+
+        // Définir l'image mise en avant si on en a trouvé une et qu'elle n'est pas déjà définie
+        if ($first_image_id && !get_post_thumbnail_id($post_id)) {
+            set_post_thumbnail($post_id, $first_image_id);
+            if (DEBUG_UP_IMMO) {
+                error_log('UP_IMMO - Image à la une définie: ' . $first_image_id);
+            }
+        }
     }
 
     private function imageExists($post_id, $image_url) {
@@ -308,10 +378,26 @@ class CSVImportStrategy implements ImportStrategyInterface {
 
             if ($this->imageExists($post_id, $image_url)) {
                 $this->updateProgress('Image déjà existante : ' . basename($image_url));
-                return false;
+                
+                // Retourner l'ID de l'image existante pour permettre de la définir comme image à la une
+                $args = array(
+                    'post_type' => 'attachment',
+                    'post_parent' => $post_id,
+                    'meta_key' => '_source_url',
+                    'meta_value' => $image_url,
+                    'posts_per_page' => 1,
+                    'fields' => 'ids'
+                );
+                $existing = get_posts($args);
+                return !empty($existing) ? $existing[0] : false;
             }
 
             $this->updateProgress('Import de l\'image : ' . basename($image_url));
+
+            // S'assurer que les fonctions nécessaires de WordPress sont chargées
+            require_once(ABSPATH . 'wp-admin/includes/image.php');
+            require_once(ABSPATH . 'wp-admin/includes/file.php');
+            require_once(ABSPATH . 'wp-admin/includes/media.php');
 
             // Télécharger l'image
             $tmp_file = download_url($image_url);

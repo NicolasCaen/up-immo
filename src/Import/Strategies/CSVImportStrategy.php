@@ -318,6 +318,46 @@ class CSVImportStrategy implements ImportStrategyInterface {
         $image_indices = range(85, 93);
         $first_image_id = null;
         $imported_count = 0;
+        
+        // Récupérer les URLs des images dans le CSV
+        $csv_image_urls = [];
+        foreach ($image_indices as $index) {
+            $image_url = $data[$index] ?? '';
+            if (!empty($image_url) && str_starts_with($image_url, 'http')) {
+                $csv_image_urls[] = $image_url;
+            }
+        }
+        
+        // Si l'option est activée, supprimer les images qui ne sont plus dans le CSV
+        if (get_option('up_immo_remove_missing_images', 0) || get_option('up_immo_remove_manual_images', 0)) {
+            $existing_attachments = get_posts([
+                'post_type' => 'attachment',
+                'post_parent' => $post_id,
+                'posts_per_page' => -1
+            ]);
+            
+            foreach ($existing_attachments as $attachment) {
+                $source_url = get_post_meta($attachment->ID, '_source_url', true);
+                $should_delete = false;
+                
+                // Si l'image a une _source_url, vérifier si elle est dans le CSV
+                if ($source_url) {
+                    $should_delete = get_option('up_immo_remove_missing_images', 0) && !in_array($source_url, $csv_image_urls);
+                } else {
+                    // Si l'image n'a pas de _source_url (attachée manuellement), 
+                    // la supprimer seulement si l'option est activée
+                    $should_delete = get_option('up_immo_remove_manual_images', 0);
+                }
+                
+                if ($should_delete) {
+                    wp_delete_attachment($attachment->ID, true);
+                    if (DEBUG_UP_IMMO) {
+                        $type = $source_url ? 'absente du CSV' : 'manuelle';
+                        error_log('UP_IMMO - Image supprimée (' . $type . '): ' . ($source_url ?: 'URL inconnue - ID: ' . $attachment->ID));
+                    }
+                }
+            }
+        }
 
         foreach ($image_indices as $index) {
             $image_url = $data[$index] ?? '';

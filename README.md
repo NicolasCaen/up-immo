@@ -2,6 +2,11 @@
 
 ## Changelog
 
+### 1.4.1 - 2026-04-01
+- **Suppression** : Option séparée pour supprimer les images manuelles (sans URL source) lors de la mise à jour
+- **Flexibilité** : 3 options indépendantes pour gérer la suppression des images (avec le bien, absentes du CSV, manuelles)
+- **Logs** : Amélioration des logs de debug pour distinguer les types d'images supprimées
+
 ### 1.4.0 - 2026-04-01
 - **Settings** : Ajout d'une page de paramètres dans l'administration (Biens > Settings)
 - **Suppression** : Option pour supprimer automatiquement les images attachées lors de la suppression d'un bien

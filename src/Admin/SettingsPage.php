@@ -20,6 +20,8 @@ class SettingsPage {
 
     public function registerSettings() {
         register_setting('up_immo_settings', 'up_immo_delete_images_with_bien');
+        register_setting('up_immo_settings', 'up_immo_remove_missing_images');
+        register_setting('up_immo_settings', 'up_immo_remove_manual_images');
     }
 
     public function renderSettingsPage() {
@@ -47,6 +49,44 @@ class SettingsPage {
                             <p class="description">
                                 Cochez cette case pour supprimer automatiquement toutes les images attachées 
                                 lorsqu'un bien est supprimé. Attention, cette action est irréversible.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="up_immo_remove_missing_images">
+                                Supprimer les images absentes lors de la mise à jour
+                            </label>
+                        </th>
+                        <td>
+                            <input type="checkbox" 
+                                   id="up_immo_remove_missing_images" 
+                                   name="up_immo_remove_missing_images" 
+                                   value="1" 
+                                   <?php checked(get_option('up_immo_remove_missing_images', 0)); ?> />
+                            <p class="description">
+                                Cochez cette case pour supprimer automatiquement les images d'import 
+                                qui ne sont plus présentes dans le fichier d'import lors de la mise à jour d'un bien. 
+                                Attention, cette action est irréversible.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="up_immo_remove_manual_images">
+                                Supprimer les images manuelles lors de la mise à jour
+                            </label>
+                        </th>
+                        <td>
+                            <input type="checkbox" 
+                                   id="up_immo_remove_manual_images" 
+                                   name="up_immo_remove_manual_images" 
+                                   value="1" 
+                                   <?php checked(get_option('up_immo_remove_manual_images', 0)); ?> />
+                            <p class="description">
+                                Cochez cette case pour supprimer automatiquement les images attachées manuellement 
+                                (sans URL source) lors de la mise à jour d'un bien. 
+                                Attention, cette action est irréversible.
                             </p>
                         </td>
                     </tr>

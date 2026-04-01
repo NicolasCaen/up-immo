@@ -2,6 +2,12 @@
 
 ## Changelog
 
+### 1.4.0 - 2026-04-01
+- **Settings** : Ajout d'une page de paramètres dans l'administration (Biens > Settings)
+- **Suppression** : Option pour supprimer automatiquement les images attachées lors de la suppression d'un bien
+- **Import** : Ajout du champ 'type' comme métadonnée lors de l'import CSV
+- **Import** : Conversion des balises <br> en sauts de ligne réels dans la description pour un meilleur affichage dans le textarea
+
 ### 1.3.0 - 2026-03-30
 - **Correctif Critique** : Résolution de l'erreur fatale "Class AdminAjax not found" via un chargement robuste des classes.
 - **Robustesse** : Passage aux chemins absolus (`plugin_dir_path`) pour l'inclusion des fichiers sources.

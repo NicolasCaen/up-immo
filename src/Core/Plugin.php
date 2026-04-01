@@ -3,6 +3,7 @@ namespace UpImmo\Core;
 
 use UpImmo\Admin\AdminPage;
 use UpImmo\Admin\AdminAjax;
+use UpImmo\Admin\SettingsPage;
 use UpImmo\Import\ImportManager;
 
 class Plugin extends Singleton {
@@ -22,6 +23,7 @@ class Plugin extends Singleton {
         if (is_admin()) {
             $this->admin = new \UpImmo\Admin\AdminPage();
             $this->adminAjax = new \UpImmo\Admin\AdminAjax();
+            new \UpImmo\Admin\SettingsPage();
         }
 
         // Initialiser le reste du plugin
@@ -44,6 +46,7 @@ class Plugin extends Singleton {
         // Add hooks
         add_action('init', [$this, 'registerPostTypes']);
         add_action('init', [$this, 'registerTaxonomies']);
+        add_action('before_delete_post', [$this, 'deleteImagesWithBien']);
     }
 
     public function registerPostTypes(): void {
@@ -52,5 +55,25 @@ class Plugin extends Singleton {
 
     public function registerTaxonomies(): void {
         // Registration logic for taxonomies
+    }
+
+    public function deleteImagesWithBien($post_id) {
+        if (get_post_type($post_id) !== 'bien') {
+            return;
+        }
+
+        if (!get_option('up_immo_delete_images_with_bien', 0)) {
+            return;
+        }
+
+        $attachments = get_posts([
+            'post_type' => 'attachment',
+            'post_parent' => $post_id,
+            'posts_per_page' => -1
+        ]);
+
+        foreach ($attachments as $attachment) {
+            wp_delete_attachment($attachment->ID, true);
+        }
     }
 } 

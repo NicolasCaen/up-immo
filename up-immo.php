@@ -2,7 +2,7 @@
 /**
  * Plugin Name: UP Immo
  * Description: Plugin de gestion immobilière
- * Version: 1.3.0
+ * Version: 1.4.0
  * Author: GEHIN Nicolas
  */
 
@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Constants
-define('UP_IMMO_VERSION', '1.3.0');
+define('UP_IMMO_VERSION', '1.4.0');
 define('UP_IMMO_PLUGIN_FILE', __FILE__);
 define('UP_IMMO_PATH', plugin_dir_path(__FILE__));
 define('UP_IMMO_URL', plugin_dir_url(__FILE__));
@@ -52,7 +52,8 @@ $files_to_load = [
     'src/Core/Singleton.php',
     'src/Core/Plugin.php',
     'src/Admin/AdminPage.php',
-    'src/Admin/AdminAjax.php'
+    'src/Admin/AdminAjax.php',
+    'src/Admin/SettingsPage.php'
 ];
 
 foreach ($files_to_load as $file_rel_path) {

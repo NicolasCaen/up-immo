@@ -203,13 +203,14 @@ class CSVImportStrategy implements ImportStrategyInterface {
         $mapped_data = [
             'reference' => sanitize_text_field($data[1] ?? ''),
             'titre' => sanitize_text_field(mb_convert_encoding($data[19] ?? '', 'UTF-8', 'ISO-8859-1')),
-            'description' => wp_kses_post(mb_convert_encoding($data[20] ?? '', 'UTF-8', 'ISO-8859-1')),
+            'description' => str_replace(['<br>', '<br/>', '<br />'], "\n", wp_kses_post(mb_convert_encoding($data[20] ?? '', 'UTF-8', 'ISO-8859-1'))),
             'prix' => sanitize_text_field($data[10] ?? ''),
             'surface' => sanitize_text_field($data[15] ?? ''),
             'pieces' => sanitize_text_field($data[17] ?? ''),
             'chambres' => sanitize_text_field($data[18] ?? ''),
             'code_postal' => sanitize_text_field($data[4] ?? ''),
             'ville' => sanitize_text_field(mb_convert_encoding($data[5] ?? '', 'UTF-8', 'ISO-8859-1')),
+            'type' => sanitize_text_field(mb_convert_encoding($data[3] ?? '', 'UTF-8', 'ISO-8859-1')),
             'dpe' => sanitize_text_field($data[324] ?? ''),
             'energie' => sanitize_text_field($data[175] ?? ''),
             'energie_lettre' => sanitize_text_field($data[176] ?? ''),
@@ -470,6 +471,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
             'reference' => $data[1] ?? '', // Référence du bien
             'type_transaction' => $data[2] ?? '',
             'type_bien' => $data[3] ?? '',
+            'type' => $data[3] ?? '',
             'code_postal' => $data[4] ?? '',
             'ville' => $data[5] ?? '',
             'prix' => $data[10] ?? '',

@@ -106,6 +106,7 @@ class CSVImportStrategy implements ImportStrategyInterface {
             }
 
             $results = [];
+            $imported_references = [];
 
             if (!$this->validate($full_path)) {
                 throw new \Exception("Fichier CSV invalide ou introuvable : " . $full_path);
@@ -131,6 +132,11 @@ class CSVImportStrategy implements ImportStrategyInterface {
                 try {
                     $data = $this->parseLine($line);
                     if ($data) {
+                        $reference = sanitize_text_field($data[1] ?? '');
+                        if (!empty($reference)) {
+                            $imported_references[] = $reference;
+                        }
+
                         $this->sendProgressUpdate(
                             sprintf('Import du bien %s (%d/%d)...', 
                                 $data[1] ?? '',
@@ -150,6 +156,8 @@ class CSVImportStrategy implements ImportStrategyInterface {
 
             $this->sendProgressUpdate('Finalisation de l\'import...', 90);
             fclose($handle);
+
+            $this->processMissingBiens(array_values(array_unique($imported_references)));
             
             $this->sendProgressUpdate('Import terminé !', 100);
             
@@ -314,10 +322,11 @@ class CSVImportStrategy implements ImportStrategyInterface {
             error_log('UP_IMMO - Nombre total de colonnes dans data: ' . count($data));
         }
 
-        // Les images se trouvent aux indices 85 à 93 selon le format CSV
-        $image_indices = range(85, 93);
+        // Les images se trouvent aux indices 163-173 et 84-92 selon le format CSV (colonnes 164-174 et 85-93)
+        $image_indices = array_merge(range(163, 173), range(84, 92));
         $first_image_id = null;
         $imported_count = 0;
+        $featured_image_id = null; // Pour stocker l'ID de l'image mise en avant (indice 84)
         
         // Récupérer les URLs des images dans le CSV
         $csv_image_urls = [];
@@ -389,6 +398,10 @@ class CSVImportStrategy implements ImportStrategyInterface {
                 if (!$first_image_id) {
                     $first_image_id = $attachment_id;
                 }
+                // Si c'est l'image à l'indice 84, la stocker comme image mise en avant
+                if ($index === 84) {
+                    $featured_image_id = $attachment_id;
+                }
                 if (DEBUG_UP_IMMO) {
                     error_log('UP_IMMO - Image importée avec succès, ID: ' . $attachment_id);
                 }
@@ -403,11 +416,13 @@ class CSVImportStrategy implements ImportStrategyInterface {
             error_log('UP_IMMO - Total images importées: ' . $imported_count);
         }
 
-        // Définir l'image mise en avant si on en a trouvé une et qu'elle n'est pas déjà définie
-        if ($first_image_id && !get_post_thumbnail_id($post_id)) {
-            set_post_thumbnail($post_id, $first_image_id);
+        // Définir l'image mise en avant : priorité à l'indice 84, sinon première image trouvée
+        $thumbnail_id = $featured_image_id ?: $first_image_id;
+        if ($thumbnail_id) {
+            set_post_thumbnail($post_id, $thumbnail_id);
             if (DEBUG_UP_IMMO) {
-                error_log('UP_IMMO - Image à la une définie: ' . $first_image_id);
+                $image_type = $featured_image_id ? 'indice 84' : 'première image';
+                error_log('UP_IMMO - Image à la une définie (' . $image_type . '): ' . $thumbnail_id);
             }
         }
     }
@@ -503,6 +518,58 @@ class CSVImportStrategy implements ImportStrategyInterface {
         } catch (\Exception $e) {
             $this->updateProgress('Erreur import image : ' . $e->getMessage());
             return false;
+        }
+    }
+
+    private function processMissingBiens(array $imported_references): void {
+        $action = get_option('up_immo_missing_bien_action', 'none');
+
+        if (!in_array($action, ['archive', 'draft', 'delete'], true)) {
+            return;
+        }
+
+        $bien_ids = get_posts([
+            'post_type' => 'bien',
+            'posts_per_page' => -1,
+            'fields' => 'ids',
+            'post_status' => ['publish', 'private', 'draft', 'pending', 'future']
+        ]);
+
+        $updated_count = 0;
+
+        foreach ($bien_ids as $bien_id) {
+            $reference = get_post_meta($bien_id, 'reference', true);
+
+            if (empty($reference) || in_array((string) $reference, $imported_references, true)) {
+                continue;
+            }
+
+            if ($action === 'archive') {
+                wp_update_post([
+                    'ID' => $bien_id,
+                    'post_status' => 'archived'
+                ]);
+                $updated_count++;
+                continue;
+            }
+
+            if ($action === 'draft') {
+                wp_update_post([
+                    'ID' => $bien_id,
+                    'post_status' => 'draft'
+                ]);
+                $updated_count++;
+                continue;
+            }
+
+            if ($action === 'delete') {
+                wp_delete_post($bien_id, true);
+                $updated_count++;
+            }
+        }
+
+        if (DEBUG_UP_IMMO) {
+            error_log('UP_IMMO - Biens absents traités : ' . $updated_count . ' (action: ' . $action . ')');
         }
     }
 

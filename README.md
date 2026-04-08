@@ -2,6 +2,17 @@
 
 ## Changelog
 
+### 1.4.3 - 2026-04-08
+- **Biens absents** : Ajout d'une option radio pour choisir l'action sur les biens absents du fichier d'import (ne rien faire, archive, brouillon, suppression)
+- **Import** : Traitement automatique des biens absents en fin d'import selon l'option choisie
+- **Archive** : Correction du statut d'archivage pour utiliser `archived` (plugin `up-status-archive`) au lieu de `private`
+
+### 1.4.2 - 2026-04-01
+- **Images** : Gestion de deux ranges d'images (indices 163-173 et 84-92)
+- **Image mise en avant** : Priorité à l'image de l'indice 84 (colonne 85) avec mise à jour systématique
+- **Import** : Support de 20 colonnes d'images au lieu de 9 précédemment
+- **Logs** : Amélioration des logs pour indiquer le type d'image mise en avant
+
 ### 1.4.1 - 2026-04-01
 - **Suppression** : Option séparée pour supprimer les images manuelles (sans URL source) lors de la mise à jour
 - **Flexibilité** : 3 options indépendantes pour gérer la suppression des images (avec le bien, absentes du CSV, manuelles)

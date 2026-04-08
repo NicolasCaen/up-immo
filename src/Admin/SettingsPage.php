@@ -22,9 +22,11 @@ class SettingsPage {
         register_setting('up_immo_settings', 'up_immo_delete_images_with_bien');
         register_setting('up_immo_settings', 'up_immo_remove_missing_images');
         register_setting('up_immo_settings', 'up_immo_remove_manual_images');
+        register_setting('up_immo_settings', 'up_immo_missing_bien_action');
     }
 
     public function renderSettingsPage() {
+        $missing_bien_action = get_option('up_immo_missing_bien_action', 'none');
         ?>
         <div class="wrap">
             <h1>UpImmo Settings</h1>
@@ -87,6 +89,34 @@ class SettingsPage {
                                 Cochez cette case pour supprimer automatiquement les images attachées manuellement 
                                 (sans URL source) lors de la mise à jour d'un bien. 
                                 Attention, cette action est irréversible.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            Biens absents du fichier d'import
+                        </th>
+                        <td>
+                            <fieldset>
+                                <label>
+                                    <input type="radio" name="up_immo_missing_bien_action" value="none" <?php checked($missing_bien_action, 'none'); ?> />
+                                    Ne rien faire
+                                </label><br />
+                                <label>
+                                    <input type="radio" name="up_immo_missing_bien_action" value="archive" <?php checked($missing_bien_action, 'archive'); ?> />
+                                    Mettre en archive
+                                </label><br />
+                                <label>
+                                    <input type="radio" name="up_immo_missing_bien_action" value="draft" <?php checked($missing_bien_action, 'draft'); ?> />
+                                    Mettre en brouillon
+                                </label><br />
+                                <label>
+                                    <input type="radio" name="up_immo_missing_bien_action" value="delete" <?php checked($missing_bien_action, 'delete'); ?> />
+                                    Supprimer
+                                </label>
+                            </fieldset>
+                            <p class="description">
+                                Action appliquée aux biens existants qui ne sont plus présents dans le fichier d'import.
                             </p>
                         </td>
                     </tr>

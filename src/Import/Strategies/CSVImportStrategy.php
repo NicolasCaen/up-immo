@@ -398,6 +398,11 @@ class CSVImportStrategy implements ImportStrategyInterface {
                 if (!$first_image_id) {
                     $first_image_id = $attachment_id;
                 }
+                // Mémoriser l'ordre de la colonne CSV dans menu_order (mis à jour à chaque import)
+                $attachment_post = get_post($attachment_id);
+                if ($attachment_post && (int) $attachment_post->menu_order !== $index + 1) {
+                    wp_update_post(['ID' => $attachment_id, 'menu_order' => $index + 1]);
+                }
                 // Si c'est l'image à l'indice 84, la stocker comme image mise en avant
                 if ($index === 84) {
                     $featured_image_id = $attachment_id;

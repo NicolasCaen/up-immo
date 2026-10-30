@@ -2,6 +2,10 @@
 
 ## Changelog
 
+### 1.4.4 - 2026-10-30
+- **Images** : Enregistrement de l'ordre des colonnes CSV dans le champ `menu_order` de chaque attachment (numéro de colonne : 85-93, 164-174), mis à jour à chaque import même pour les images existantes
+- **Slider** : Permet l'affichage des images dans l'ordre du fichier d'import (image à la une en premier, colonne 85) via le tri `menu_order`
+
 ### 1.4.3 - 2026-04-08
 - **Biens absents** : Ajout d'une option radio pour choisir l'action sur les biens absents du fichier d'import (ne rien faire, archive, brouillon, suppression)
 - **Import** : Traitement automatique des biens absents en fin d'import selon l'option choisie
